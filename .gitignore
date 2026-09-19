@@ -1,0 +1,14 @@
+# 依赖与构建产物
+node_modules/
+frontend/dist/
+build/bin/
+build/cf-quicktunnel*
+
+# cloudflared 可执行文件（运行时自动下载）
+bin/cloudflared
+bin/cloudflared.exe
+bin/*.download
+
+# 运行数据
+data/
+*.sock
