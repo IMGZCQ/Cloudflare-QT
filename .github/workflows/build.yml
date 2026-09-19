@@ -15,7 +15,7 @@ on:
 
 env:
   GO_VERSION: '1.26'
-  NODE_VERSION: '22'
+  NODE_VERSION: '24'
 
 jobs:
   build-frontend:
