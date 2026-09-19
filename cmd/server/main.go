@@ -23,10 +23,14 @@ import (
 	"cfquicktunnel/internal/tunnel"
 )
 
+// 编译时通过 -ldflags "-X main.Version=xxx" 注入
+var Version = "dev"
+
 func main() {
 	log.SetFlags(log.LstdFlags)
 	log.SetPrefix("[cfquicktunnel] ")
 	log.SetOutput(io.MultiWriter(os.Stderr, logbuf.New(500)))
+	log.Printf("CF-QuickTunnel %s 启动", Version)
 
 	st, err := store.Open()
 	if err != nil {

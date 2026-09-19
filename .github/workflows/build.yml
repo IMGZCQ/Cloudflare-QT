@@ -15,7 +15,7 @@ on:
 
 env:
   GO_VERSION: '1.26'
-  NODE_VERSION: '22'
+  NODE_VERSION: '24'
 
 jobs:
   build-frontend:
@@ -36,6 +36,8 @@ jobs:
 
       - name: Build
         working-directory: frontend
+        env:
+          VITE_APP_VERSION: ${{ inputs.version }}
         run: npm run build
 
       - name: Upload dist
@@ -89,7 +91,7 @@ jobs:
           if [ "$GOOS" = "windows" ]; then
             BIN="cf-quicktunnel-server.exe"
           fi
-          go build -trimpath -ldflags "-s -w" -o "$BIN" ./cmd/server
+          go build -trimpath -ldflags "-s -w -X main.Version=${{ inputs.version }}" -o "$BIN" ./cmd/server
           echo "Built: $BIN"
 
       - name: Upload binary
@@ -126,7 +128,7 @@ jobs:
         env:
           CGO_ENABLED: 0
         run: |
-          go build -tags "desktop,production" -ldflags "-H windowsgui -s -w" -o cf-quicktunnel-desktop.exe .
+          go build -tags "desktop,production" -ldflags "-H windowsgui -s -w -X main.Version=${{ inputs.version }}" -o cf-quicktunnel-desktop.exe .
           echo "Built: cf-quicktunnel-desktop.exe"
 
       - name: Upload binary
