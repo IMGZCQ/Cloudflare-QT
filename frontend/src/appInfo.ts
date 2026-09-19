@@ -1,4 +1,2 @@
-// 应用元信息：版本号唯一来源是 fnOS 打包描述文件 cloudflare_qt/manifest 的 version 字段
-import manifest from '../../cloudflare_qt/manifest?raw'
-
-export const appVersion = manifest.match(/^version=(.*)$/m)?.[1].trim() ?? ''
+// 应用元信息：编译时通过 VITE_APP_VERSION 注入，未注入时回退到开发版本
+export const appVersion = import.meta.env.VITE_APP_VERSION || 'dev'
