@@ -37,7 +37,7 @@ var (
 )
 
 // Root 返回项目根目录。
-// 优先级：CFQT_HOME > 从工作目录向上查找 wails.json > 可执行文件所在目录。
+// 优先级：CFQT_HOME > 从工作目录向上查找 wails.json > 当前工作目录。
 func Root() string {
 	rootOnce.Do(func() { rootDir = resolveRoot() })
 	return rootDir
@@ -54,12 +54,9 @@ func resolveRoot() string {
 			return dir
 		}
 	}
-	if exe, err := os.Executable(); err == nil {
-		dir := filepath.Dir(exe)
-		if found, ok := findUp(dir, "wails.json"); ok {
-			return found
-		}
-		return dir
+	// 独立运行时使用当前工作目录，而不是可执行文件所在目录
+	if cwd, err := os.Getwd(); err == nil {
+		return cwd
 	}
 	return "."
 }
