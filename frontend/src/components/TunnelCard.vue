@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import type { TunnelItem } from '../api'
 import { useCopy } from '../composables/useCopy'
 import { useConfirm } from '../composables/useConfirm'
+import { maskUrl } from '../utils'
 import Icon from './Icon.vue'
 
 const props = defineProps<{ item: TunnelItem; busy: boolean }>()
@@ -85,7 +86,7 @@ const { confirming, doConfirm } = useConfirm(
     </div>
 
     <div v-if="item.url" class="url-card">
-      <a ref="urlRef" :href="item.url" target="_blank" rel="noreferrer">{{ item.url }}</a>
+      <a ref="urlRef" :href="item.url" target="_blank" rel="noreferrer">{{ maskUrl(item.url) }}</a>
     </div>
     <div v-else-if="item.lastError" class="err">{{ item.lastError }}</div>
 

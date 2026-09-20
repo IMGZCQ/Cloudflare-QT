@@ -68,6 +68,25 @@ type binary struct {
 	progress    int
 	message     string
 	version     string
+	callbacks   []func() // 下载完成后的回调（由 Manager 注册，用于重试待启动隧道）
+}
+
+// onReady 注册下载完成回调，由 Manager 在初始化时调用
+func (b *binary) onReady(f func()) {
+	b.mu.Lock()
+	b.callbacks = append(b.callbacks, f)
+	b.mu.Unlock()
+}
+
+// notifyReady 通知所有回调（在锁外执行，避免回调里拿锁死锁）
+func (b *binary) notifyReady() {
+	b.mu.Lock()
+	callbacks := make([]func(), len(b.callbacks))
+	copy(callbacks, b.callbacks)
+	b.mu.Unlock()
+	for _, f := range callbacks {
+		f()
+	}
 }
 
 // assetName 按当前平台推导 release 资产名
@@ -148,6 +167,11 @@ func (b *binary) Download(ctx context.Context) error {
 		b.version = probeVersion(config.CloudflaredPath())
 	}
 	b.mu.Unlock()
+
+	if err == nil {
+		// 下载成功：通知 Manager 重试因等待二进制而失败的隧道
+		b.notifyReady()
+	}
 	return err
 }
 

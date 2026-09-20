@@ -89,7 +89,24 @@ type Manager struct {
 
 // NewManager 创建管理器
 func NewManager(st *store.Store) *Manager {
-	return &Manager{st: st, inst: make(map[string]*instance)}
+	m := &Manager{st: st, inst: make(map[string]*instance)}
+	// 注册下载完成回调：自动重试因等待二进制而进入 error 状态的隧道
+	m.bin.onReady(m.retryErrorTunnels)
+	return m
+}
+
+// retryErrorTunnels 下载完成后，自动重试所有 error 状态的隧道
+func (m *Manager) retryErrorTunnels() {
+	for _, cfg := range m.st.List() {
+		in := m.getInstance(cfg.ID)
+		in.mu.Lock()
+		shouldRetry := in.state == StateError
+		in.mu.Unlock()
+		if shouldRetry {
+			in.appendLog("cloudflared 下载完成，自动重试启动")
+			m.startAsync(cfg.ID)
+		}
+	}
 }
 
 // BinaryStatus 返回 cloudflared 状态

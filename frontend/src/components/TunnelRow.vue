@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import type { TunnelItem } from '../api'
 import { useCopy } from '../composables/useCopy'
 import { useConfirm } from '../composables/useConfirm'
+import { maskUrl } from '../utils'
 import Icon from './Icon.vue'
 
 const props = defineProps<{ item: TunnelItem; busy: boolean }>()
@@ -42,7 +43,7 @@ const { confirming, doConfirm } = useConfirm(
       </div>
       <div class="target">本地 {{ target }}<template v-if="item.pid"> · PID {{ item.pid }}</template></div>
       <div v-if="item.url" class="url">
-        <a ref="urlRef" :href="item.url" target="_blank" rel="noreferrer">{{ item.url }}</a>
+        <a ref="urlRef" :href="item.url" target="_blank" rel="noreferrer">{{ maskUrl(item.url) }}</a>
         <button class="mini" title="复制" aria-label="复制" @click="copy"><Icon name="copy" /></button>
         <span v-if="copyTip" class="tip">{{ copyTip }}</span>
       </div>
@@ -61,6 +62,7 @@ const { confirming, doConfirm } = useConfirm(
     <div v-else class="ops">
       <button
         v-if="!running"
+        class="primary"
         :disabled="busy"
         :title="item.state === 'paused' ? '重新启动会断开当前连接并分配新的公网地址' : '启动隧道（会分配新的公网地址）'"
         aria-label="启动"
@@ -75,6 +77,7 @@ const { confirming, doConfirm } = useConfirm(
       ><Icon name="pause" /></button>
       <button
         v-if="item.state === 'paused'"
+        class="primary"
         :disabled="busy"
         title="恢复后继续使用原公网地址，访客请求将正常转发到本地服务"
         aria-label="恢复"
@@ -260,7 +263,7 @@ const { confirming, doConfirm } = useConfirm(
   }
 
   .ops button {
-    flex: 1 1 calc(50% - 4px);
+    flex: 0 1 auto;
     padding: 8px 12px;
   }
 

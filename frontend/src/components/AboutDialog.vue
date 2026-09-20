@@ -12,7 +12,7 @@ const info = [
   { k: '开发者：', v: '米恋泥' },
   { k: '企鹅群：', v: '1039270739' },
   { k: '版本号：', v: version },
-  { k: '哩个系：', v: 'Cloudflared（Quick Tunnel）' },
+  { k: 'Github：', v: 'IMGZCQ/Cloudflare-QT', href: 'https://github.com/IMGZCQ/Cloudflare-QT' },
 ]
 </script>
 
@@ -30,28 +30,29 @@ const info = [
         </p>
 
         <h3>使用说明</h3>
-        <ol>
-          <li>新增隧道 > 填写 地址 和 端口 > 保存 > 启动 OK？</li>
+        <ul>
+          <li>新增隧道 > 填写地址 > 保存启动 > Enjoy it！</li>
 <!--           <li>首次使用先确认顶部提示 cloudflared 已就绪，缺失时点「立即下载」自动获取。</li>
           <li>点「新增隧道」填写本地地址与端口（如 <code>127.0.0.1:8080</code>）后保存。</li>
           <li>启动需要十几秒，条目会从「启动中」变为「运行中」并显示公网地址，可一键复制。</li>
           <li>编辑时只改备注或自动启动不会断开连接，仅当地址或端口变化才在后台重启隧道。</li>
           <li>点「日志」可查看 cloudflared 的实时输出，启动失败时先看这里。</li> -->
-        </ol>
+        </ul>
 
         <h3>注意事项</h3>
-        <ul>
+        <ol>
           <li>临时隧道域名随机分配，隧道重启后地址会变化，不适合需要固定域名的场景。</li>
           <li>公网地址本身没有鉴权，任何人都能访问该服务，请勿暴露无鉴权的敏感服务。</li>
           <li>勾选了自动启动会在服务重启后自动建立隧道。（但重启后会重新分配域名）</li>
           <li>「暂停」不会终止 cloudflared 进程，「恢复」后公网地址保持不变。</li>
-        </ul>
+        </ol>
 
         <dl>
           <template v-for="row in info" :key="row.k">
             <dt>{{ row.k }}</dt>
             <dd>
-              {{ row.v }}
+              <a v-if="row.href" class="repo-link" :href="row.href" target="_blank" rel="noreferrer">{{ row.v }}</a>
+              <template v-else>{{ row.v }}</template>
               <a v-if="row.k === '开发者：'" class="pay-link" href="javascript:void(0)" @click="showPay = true">【投喂入口】</a>
             </dd>
           </template>
@@ -180,6 +181,15 @@ dd {
 }
 
 .pay-link:hover {
+  color: var(--accent);
+}
+
+.repo-link {
+  color: var(--text);
+  text-decoration: none;
+}
+
+.repo-link:hover {
   color: var(--accent);
 }
 
