@@ -10,16 +10,20 @@ import (
 const maxLineBytes = 64 * 1024
 
 // RingWriter 是一个 io.Writer，仅保留最近 maxLines 行日志。
+// 内部使用环形数组，追加与裁剪均为 O(1)，并维护全局递增序号支持增量读取。
 type RingWriter struct {
 	mu    sync.Mutex
-	lines []string
+	lines []string // 环形数组，len == max，head 指向最旧一行
 	max   int
-	cur   []byte // 尚未遇到换行符的残余字节
+	head  int
+	count int
+	total uint64 // 历史写入总行数（全局递增，不回绕）
+	cur   []byte  // 尚未遇到换行符的残余字节
 }
 
 // New 创建一个保留最近 maxLines 行的 RingWriter。
 func New(maxLines int) *RingWriter {
-	return &RingWriter{max: maxLines}
+	return &RingWriter{max: maxLines, lines: make([]string, maxLines)}
 }
 
 // Write 实现 io.Writer，按换行符拆行入缓冲，超出上限时丢弃最早行。
@@ -48,20 +52,38 @@ func (w *RingWriter) Write(p []byte) (int, error) {
 
 // pushLine 追加一行并按上限丢弃最早行；调用前需持有 w.mu
 func (w *RingWriter) pushLine(line string) {
-	w.lines = append(w.lines, line)
-	if len(w.lines) > w.max {
-		// 环形裁剪：复制到新切片，避免底层数组无限增长
-		kept := make([]string, w.max)
-		copy(kept, w.lines[len(w.lines)-w.max:])
-		w.lines = kept
+	w.lines[(w.head+w.count)%w.max] = line
+	if w.count < w.max {
+		w.count++
+	} else {
+		w.head = (w.head + 1) % w.max
 	}
+	w.total++
 }
 
 // Lines 返回当前缓冲区内所有行的副本。
 func (w *RingWriter) Lines() []string {
+	lines, _ := w.LinesFrom(0)
+	return lines
+}
+
+// LinesFrom 返回序号大于等于 from 的新行，以及当前的总行数。
+// from 应传上一次调用返回的 total；当 from 早于已被丢弃的行时，返回当前全部保留行，
+// 调用方应依据 total 重新对齐。总行数可用于前端判断是否需要全量刷新。
+func (w *RingWriter) LinesFrom(from uint64) ([]string, uint64) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	out := make([]string, len(w.lines))
-	copy(out, w.lines)
-	return out
+
+	total := w.total
+	// 缓冲内最早一行的全局序号
+	oldest := total - uint64(w.count)
+	start := 0
+	if from > oldest {
+		start = int(from - oldest)
+	}
+	out := make([]string, w.count-start)
+	for i := start; i < w.count; i++ {
+		out[i-start] = w.lines[(w.head+i)%w.max]
+	}
+	return out, total
 }

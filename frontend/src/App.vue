@@ -31,14 +31,21 @@ watch(viewMode, (v) => localStorage.setItem(VIEW_KEY, v))
 let timer: number | undefined
 let etag = ''
 
-function notify(text: string, kind: 'ok' | 'err' = 'ok') {
+// 首次创建隧道提示：仅程序首次安装后弹一次，10 秒后消失
+const FIRST_HINT_KEY = 'cfqt.firstTunnelHintShown'
+
+function notify(text: string, kind: 'ok' | 'err' = 'ok', duration = 5000) {
   message.value = text
   messageKind.value = kind
   if (text) {
     window.setTimeout(() => {
       if (message.value === text) message.value = ''
-    }, 5000)
+    }, duration)
   }
+}
+
+function notifyFirstTunnel() {
+  notify('首次建立隧道需要初始化，请稍后或尝试刷新…', 'ok', 10000)
 }
 
 async function refresh() {
@@ -118,7 +125,14 @@ async function submitForm(payload: TunnelPayload) {
     formOpen.value = false
     editing.value = null
     applyResult(res)
-    if (!res.error) notify(id ? '已保存' : '已新增隧道')
+    if (!res.error) {
+      if (!id && !localStorage.getItem(FIRST_HINT_KEY)) {
+        localStorage.setItem(FIRST_HINT_KEY, '1')
+        notifyFirstTunnel()
+      } else {
+        notify(id ? '已保存' : '已新增隧道')
+      }
+    }
     await refresh()
   })
 }
@@ -162,6 +176,18 @@ async function remove(item: TunnelItem) {
 const logItem = computed<TunnelItem | null>(
   () => items.value.find((i) => i.id === logId.value) ?? null,
 )
+
+// 卡片模式下 LogPanel 头部被 ModalShell 隐藏，通过 ref 拿它的创建于/复制状态放到弹窗头部
+type LogPanelExpose = {
+  copied: boolean
+  copyTip: string
+  copy: () => void
+  hasLogs: boolean
+  createdAtText: string
+}
+const logPanelRef = ref<LogPanelExpose | null>(null)
+
+const logTitle = computed(() => (logItem.value ? `${logItem.value.name}` : '日志'))
 
 async function download() {
   await withBusy('binary', async () => {
@@ -278,10 +304,24 @@ onUnmounted(() => {
     </ModalShell>
     <ModalShell
       v-if="viewMode === 'card' && logId"
-      :title="logItem ? `${logItem.name} 日志` : '日志'"
+      :title="logTitle"
       @close="logId = ''"
     >
-      <LogPanel v-if="logItem" :item="logItem" @close="logId = ''" />
+      <template #title-extra>
+        <span v-if="logPanelRef?.createdAtText" class="created">创建于：{{ logPanelRef.createdAtText }}</span>
+      </template>
+      <template #actions>
+        <span v-if="logPanelRef?.copyTip" class="copy-tip">{{ logPanelRef.copyTip }}</span>
+        <button
+          class="icon-btn"
+          :class="{ copied: logPanelRef?.copied }"
+          :disabled="!logPanelRef?.hasLogs"
+          :title="logPanelRef?.hasLogs ? '复制日志' : '暂无日志'"
+          aria-label="复制日志"
+          @click="logPanelRef?.copy()"
+        ><Icon :name="logPanelRef?.copied ? 'check' : 'copy'" /></button>
+      </template>
+      <LogPanel v-if="logItem" ref="logPanelRef" :item="logItem" @close="logId = ''" />
     </ModalShell>
 
     <AboutDialog v-if="aboutOpen" @close="aboutOpen = false" />
@@ -289,6 +329,36 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
+.created {
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.copy-tip {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px 8px;
+}
+
+.icon-btn svg {
+  width: 15px;
+  height: 15px;
+  display: block;
+}
+
+.icon-btn.copied {
+  background: var(--ok);
+  border-color: var(--ok);
+  color: #0d1f14;
+}
+
 .page {
   max-width: 940px;
   margin: 0 auto;

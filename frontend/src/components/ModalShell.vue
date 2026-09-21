@@ -23,8 +23,14 @@ onUnmounted(() => {
   <div class="mask" @mousedown.self="emit('close')">
     <div class="box" role="dialog" aria-modal="true">
       <div class="head">
-        <strong>{{ props.title }}</strong>
-        <button class="mini" @click="emit('close')">关闭</button>
+        <div class="head-title">
+          <strong>{{ props.title }}</strong>
+          <slot name="title-extra" />
+        </div>
+        <div class="head-actions">
+          <slot name="actions" />
+          <button class="mini" @click="emit('close')">关闭</button>
+        </div>
       </div>
       <div class="body">
         <slot />
@@ -61,8 +67,23 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 12px;
   padding: 12px 16px;
   border-bottom: 1px solid var(--border);
+}
+
+.head-title {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+}
+
+.head-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
 }
 
 .mini {

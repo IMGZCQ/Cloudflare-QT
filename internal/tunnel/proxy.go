@@ -9,10 +9,26 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"sync/atomic"
+	"time"
 )
 
-//go:embed bg.png
-var bgPNG []byte
+//go:embed bg.webp
+var bgWebp []byte
+
+// proxyTransport 复用到本地服务的连接，避免每个请求重新 TCP/TLS 握手
+var proxyTransport = &http.Transport{
+	MaxIdleConns:        64,
+	MaxIdleConnsPerHost: 32,
+	IdleConnTimeout:     90 * time.Second,
+}
+
+// proxyTransportHTTPS 本地 HTTPS 服务多为自签证书，跳过校验，其余池化参数保持一致
+var proxyTransportHTTPS = &http.Transport{
+	MaxIdleConns:        64,
+	MaxIdleConnsPerHost: 32,
+	IdleConnTimeout:     90 * time.Second,
+	TLSClientConfig:     &tls.Config{InsecureSkipVerify: true},
+}
 
 // localProxy 是插入 cloudflared 与本地服务之间的可控代理层。
 // 暂停时返回维护页面，恢复时转发到真实服务，cloudflared 进程和域名不受影响。
@@ -42,11 +58,10 @@ func newLocalProxy(target string) *localProxy {
 		},
 	}
 
-	// HTTPS 本地服务多为自签证书，代理跳过校验
+	// 显式挂池化 Transport，复用到本地服务的连接
+	rp.Transport = proxyTransport
 	if targetURL.Scheme == "https" {
-		rp.Transport = &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-		}
+		rp.Transport = proxyTransportHTTPS
 	}
 
 	return &localProxy{reverseProxy: rp}
@@ -73,9 +88,11 @@ func (p *localProxy) stop() {
 func (p *localProxy) setPaused(paused bool) { p.paused.Store(paused) }
 
 func (p *localProxy) handle(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path == "/bg.png" {
-		w.Header().Set("Content-Type", "image/png")
-		_, _ = w.Write(bgPNG)
+	if r.URL.Path == "/bg.webp" {
+		w.Header().Set("Content-Type", "image/webp")
+		// 静态资源内容固定，长缓存避免暂停页反复拉取
+		w.Header().Set("Cache-Control", "public, max-age=86400, immutable")
+		_, _ = w.Write(bgWebp)
 		return
 	}
 	if p.paused.Load() {
@@ -272,7 +289,7 @@ body{
     <img src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjUiIGhlaWdodD0iNjUiIHZpZXdCb3g9IjAgMCA2NSA2NSIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTU2LjY1NzYgOC42Njc5N0M1Ni42NTc2IDguNjY3OTcgNTkuNjIyMyAxNC41MDUxIDU4LjI2NDEgMTcuOTA1NkM1Ny41Njg4IDE5LjY0NjMgNTUuNTUzMSAyMS43MjExIDUzLjM0NDEgMjEuNzIxMUgyNC40MDc0QzIwLjI0ODMgMjEuNzIxMSAxNi44NzY3IDI1LjA5MjcgMTYuODc2NyAyOS4yNTE4VjUwLjQzOEMxNi44NzY3IDUzLjU5ODkgMTkuNDM5MSA1Ni4xNjEzIDIyLjYgNTYuMTYxM0gzMC40NzY5QzMyLjUyODcgNTYuMTYxMyAzNC4xOTIgNTQuNDk4IDM0LjE5MiA1Mi40NDYyVjQ3LjU2ODRIMzkuNjI3MkM0MS42NzkgNDcuNTY4NCA0My4zNDIzIDQ1LjkwNTEgNDMuMzQyMyA0My44NTMzVjM5LjU5MzlDNDguMDA4IDM5LjU5MzkgNTIuNDA4NiAzNy40MjUxIDU1LjI1MDggMzMuNzI1TDU1LjUyNDYgMzMuMzY4NUg0MC44MzIxQzM4Ljc4MDMgMzMuMzY4NSAzNy4xMTY5IDM1LjAzMTggMzcuMTE2OSAzNy4wODM2VjQwLjUzOThDMzcuMTE2OSA0MC45ODM1IDM2Ljc1NzMgNDEuMzQzMSAzNi4zMTM3IDQxLjM0MzFIMzEuNjgxOEMyOS42MyA0MS4zNDMxIDI3Ljk2NjcgNDMuMDA2NCAyNy45NjY3IDQ1LjA1ODJWNDguNDkxMkMyNy45NjY3IDQ5LjI4OTEgMjcuMzE5OCA0OS45MzYgMjYuNTIxOSA0OS45MzZIMjQuNTQ2OEMyMy43NDg5IDQ5LjkzNiAyMy4yNDE1IDQ5LjI4OTEgMjMuMjQxNSA0OC40OTEyVjI5LjQ4MjdDMjMuMjQxNSAyOC43NjE4IDIzLjgyNTkgMjguMTc3MyAyNC41NDY4IDI4LjE3NzNINTUuMzUyM0M1OS41MTEzIDI4LjE3NzMgNjIuODgyOSAyNC41NzQ5IDYyLjg4MjkgMjAuNDE1OEM2Mi44ODI5IDE2LjYzNjYgNjEuMzE2NSAxMy4wMjY0IDU4LjU1NjcgMTAuNDQ0Nkw1Ni42NTc2IDguNjY3OTdaIiBmaWxsPSJ3aGl0ZSIvPgo8cGF0aCBkPSJNNi43ODUxOCAxNy45MzQ0QzUuNDI2OTcgMTQuNTM0IDguMzkxNzIgOC42OTY4NCA4LjM5MTcyIDguNjk2ODRMNi40OTI1OSAxMC40NzM0QzMuNzMyNzQgMTMuMDU1MiAyLjE2NjM4IDE2LjY2NTQgMi4xNjYzOCAyMC40NDQ3QzIuMTY2MzggMjQuNjAzNyA3LjI4MzM2IDI4LjE3NzMgMTEuNDQyNCAyOC4xNzczVjI4LjE0NzdDMTEuNDQyNCAyNC45OTM4IDEyLjQ0MDEgMjMuMzM2MSAxMy45MjY5IDIxLjY2OEM5LjAzMTExIDIxLjI2NzIgNy4zOTg3OSAxOS40NzA3IDYuNzg1MTggMTcuOTM0NFoiIGZpbGw9IndoaXRlIi8+Cjwvc3ZnPgo=" alt="logo">
   </div>
   <div class="hero">
-    <img src="/bg.png" alt="background">
+    <img src="/bg.webp" alt="background">
   </div>
   <section class="panel">
     <h1 class="title">服务维护中</h1>

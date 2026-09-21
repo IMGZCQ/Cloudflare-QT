@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"cfquicktunnel/internal/logbuf"
 	"cfquicktunnel/internal/store"
 )
 
@@ -46,7 +47,7 @@ type instance struct {
 	pid       int
 	startedAt int64
 	lastError string
-	logs      []string
+	logs      *logbuf.RingWriter
 	cmd       *exec.Cmd
 	proxy     *localProxy
 	stopping  bool
@@ -56,16 +57,10 @@ type instance struct {
 	cancel    context.CancelFunc // 取消后台启动任务
 }
 
+// appendLog 追加一行日志；时间前缀在写入前拼好，环形缓冲内只存纯文本。
+// RingWriter 内部自带锁，这里不需要再持 in.mu。
 func (in *instance) appendLog(line string) {
-	in.mu.Lock()
-	defer in.mu.Unlock()
-	in.logs = append(in.logs, time.Now().Format("15:04:05")+" "+line)
-	// 环形裁剪：超出时复制到新切片，避免底层数组无限增长
-	if len(in.logs) > maxLogLines {
-		kept := make([]string, maxLogLines)
-		copy(kept, in.logs[len(in.logs)-maxLogLines:])
-		in.logs = kept
-	}
+	in.logs.Write([]byte(time.Now().Format("15:04:05") + " " + line + "\n"))
 }
 
 func (in *instance) snapshot() (State, string, int, int64, string) {
@@ -121,7 +116,7 @@ func (m *Manager) getInstance(id string) *instance {
 	defer m.mu.Unlock()
 	in, ok := m.inst[id]
 	if !ok {
-		in = &instance{state: StateStopped}
+		in = &instance{state: StateStopped, logs: logbuf.New(maxLogLines)}
 		m.inst[id] = in
 	}
 	return in
@@ -221,17 +216,14 @@ func (m *Manager) Delete(id string) error {
 	return nil
 }
 
-// Logs 返回隧道日志
-func (m *Manager) Logs(id string) ([]string, error) {
+// Logs 返回隧道日志。from 为客户端上次拿到的 total，传 0 表示全量。
+// 返回增量行与当前 total；当 from 早于已被丢弃的行时返回当前全部保留行，客户端据此重对齐。
+func (m *Manager) Logs(id string, from uint64) ([]string, uint64, error) {
 	if _, ok := m.st.Get(id); !ok {
-		return nil, store.ErrNotFound
+		return nil, 0, store.ErrNotFound
 	}
-	in := m.getInstance(id)
-	in.mu.Lock()
-	defer in.mu.Unlock()
-	out := make([]string, len(in.logs))
-	copy(out, in.logs)
-	return out, nil
+	lines, total := m.getInstance(id).logs.LinesFrom(from)
+	return lines, total, nil
 }
 
 // Pause 暂停隧道：cloudflared 进程保持运行，本地代理切换为维护页面。

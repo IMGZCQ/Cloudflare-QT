@@ -2,12 +2,14 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { api, type TunnelItem } from '../api'
 import { useCopy } from '../composables/useCopy'
+import Icon from './Icon.vue'
 
 const props = defineProps<{ item: TunnelItem }>()
 const emit = defineEmits<{ close: [] }>()
 
 const lines = ref<string[]>([])
 let timer: number | undefined
+let total = 0 // 服务端日志总行数，用于增量拉取
 
 const { copied, copyTip, copy } = useCopy(() => lines.value.join('\n'))
 
@@ -18,9 +20,32 @@ const createdAtText = computed(() => {
   return `${d.getFullYear()}.${pad(d.getMonth() + 1)}.${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
 })
 
+// 卡片模式下日志面板头部被 ModalShell 隐藏，父组件通过这些暴露项在外层渲染复制按钮
+defineExpose({ copied, copyTip, copy, hasLogs: computed(() => lines.value.length > 0), createdAtText })
+
 async function load() {
   try {
-    lines.value = (await api.logs(props.item.id)).logs ?? []
+    const res = await api.logs(props.item.id, total)
+    if (res.logs?.length) {
+      // total 往前回退说明服务端缓冲被截断或隧道重启，用返回内容整体替换重对齐
+      if (res.total < total + res.logs.length) {
+        lines.value = res.logs
+      } else {
+        lines.value = lines.value.concat(res.logs)
+        // 与服务端 maxLogLines 对齐，防止本地无限增长
+        if (lines.value.length > 200) {
+          lines.value = lines.value.slice(-200)
+        }
+      }
+    } else if (res.total < total) {
+      // 无新增但 total 变小了（隧道重启清零），重新全量拉
+      total = 0
+      const full = await api.logs(props.item.id)
+      lines.value = full.logs ?? []
+      total = full.total
+      return
+    }
+    total = res.total
   } catch {
     // 隧道可能刚被删除，静默忽略
   }
@@ -45,7 +70,11 @@ function onVisibilityChange() {
   if (!document.hidden) load()
 }
 
-watch(() => props.item.id, load)
+watch(() => props.item.id, () => {
+  total = 0
+  lines.value = []
+  load()
+})
 
 onMounted(() => {
   load()
@@ -68,9 +97,14 @@ onUnmounted(() => {
       </div>
       <div class="actions">
         <span v-if="copyTip" class="copy-tip">{{ copyTip }}</span>
-        <button class="mini" :disabled="!lines.length" @click="copy">
-          {{ copied ? '已复制' : '复制' }}
-        </button>
+        <button
+          class="icon-btn"
+          :class="{ copied }"
+          :disabled="!lines.length"
+          :title="lines.length ? '复制日志' : '暂无日志'"
+          aria-label="复制日志"
+          @click="copy"
+        ><Icon :name="copied ? 'check' : 'copy'" /></button>
         <button class="mini" @click="emit('close')">关闭</button>
       </div>
     </div>
@@ -120,6 +154,25 @@ onUnmounted(() => {
 .copy-tip {
   font-size: 12px;
   color: var(--muted);
+}
+
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px 8px;
+}
+
+.icon-btn svg {
+  width: 15px;
+  height: 15px;
+  display: block;
+}
+
+.icon-btn.copied {
+  background: var(--ok);
+  border-color: var(--ok);
+  color: #0d1f14;
 }
 
 pre {

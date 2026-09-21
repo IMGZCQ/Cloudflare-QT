@@ -14,6 +14,12 @@
 - **开机自启 / 后台运行**（桌面端）：基于 Wails 的系统托盘与自启动
 - **跨平台服务端**：Windows / Linux / macOS / FreeBSD，支持 fnOS 统一网关接入（Unix Socket）
 
+<img width="986" height="661" alt="PixPin_2026-09-19_01-08-19" src="https://github.com/user-attachments/assets/bb3e430d-29e8-4507-b711-098af449202a" />
+
+<img width="986" height="781" alt="PixPin_2026-09-19_01-06-24" src="https://github.com/user-attachments/assets/78840445-55a9-4320-953f-f9e6d76d0a08" />
+
+
+
 ## 快速开始
 
 ### 桌面端（Windows）
@@ -66,6 +72,19 @@ CFQT_ADDR=0.0.0.0:9970 ./cf-quicktunnel-linux-amd64
 | `CFQT_MIRRORS` | cloudflared 下载加速源，逗号分隔；`off`/`direct` 表示仅 GitHub 直连 | 内置镜像列表 |
 
 ## 更新日志
+
+### v0.3.9 <sub>2026-09-20</sub>
+
+**✨ 功能与优化**
+
+- 优化关于对话框、隧道卡片和隧道行组件样式
+- 改进隧道二进制管理和进程管理逻辑
+- 添加工具函数库
+- 添加 README.md
+
+**🐛 修复与改进**
+
+- 修复独立二进制运行时数据目录写死到系统目录的问题，现在使用当前工作目录
 
 ### v0.3.7 <sub>2026-09-20</sub>
 

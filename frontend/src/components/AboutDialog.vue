@@ -1,17 +1,13 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { appVersion } from '../appInfo'
 
 const emit = defineEmits<{ close: [] }>()
 
 const showPay = ref(false)
 
-const version = appVersion || '未知'
-
 const info = [
   { k: '开发者：', v: '米恋泥' },
   { k: '企鹅群：', v: '1039270739' },
-  { k: '版本号：', v: version },
   { k: 'Github：', v: 'IMGZCQ/Cloudflare-QT', href: 'https://github.com/IMGZCQ/Cloudflare-QT' },
 ]
 </script>
@@ -25,8 +21,7 @@ const info = [
       </div>
       <div class="body">
         <p>
-          无需注册 Cloudflare 账号、无需 API 密钥或 Token，直接为本地服务创建临时隧道，
-          由 Cloudflare 自动分配一个公网域名，简直是小白的福音，开发者的调试利器。
+          一键创建穿透隧道，无需 Cloudflare 账号、无需 API 密钥或 Token，快速把本地服务公网访问。
         </p>
 
         <h3>使用说明</h3>

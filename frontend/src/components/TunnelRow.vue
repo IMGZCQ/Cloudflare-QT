@@ -39,9 +39,8 @@ const { confirming, doConfirm } = useConfirm(
         <span class="dot" :class="item.state"></span>
         <strong>{{ item.name }}</strong>
         <span class="state">{{ stateText[item.state] }}<span v-if="item.state === 'starting'" class="spinner"></span></span>
-        <span v-if="item.state === 'paused'" class="paused-hint">（暂停/恢复不会变更域名）</span>
+        <span class="target"> {{ target }}<template v-if="item.pid"> · PID {{ item.pid }}</template></span>
       </div>
-      <div class="target">本地 {{ target }}<template v-if="item.pid"> · PID {{ item.pid }}</template></div>
       <div v-if="item.url" class="url">
         <a ref="urlRef" :href="item.url" target="_blank" rel="noreferrer">{{ maskUrl(item.url) }}</a>
         <button class="mini" title="复制" aria-label="复制" @click="copy"><Icon name="copy" /></button>
@@ -102,6 +101,7 @@ const { confirming, doConfirm } = useConfirm(
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 16px;
   padding: 14px 16px;
   background: var(--panel);
@@ -127,6 +127,7 @@ const { confirming, doConfirm } = useConfirm(
 }
 
 .info {
+  flex: 1 1 auto;
   min-width: 0;
 }
 
@@ -134,6 +135,7 @@ const { confirming, doConfirm } = useConfirm(
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
 }
 
 .dot {
@@ -164,11 +166,6 @@ const { confirming, doConfirm } = useConfirm(
   font-size: 12px;
 }
 
-.paused-hint {
-  color: #e8c547;
-  font-size: 12px;
-}
-
 .spinner {
   display: inline-block;
   width: 12px;
@@ -188,9 +185,9 @@ const { confirming, doConfirm } = useConfirm(
 }
 
 .target {
-  margin-top: 5px;
   color: var(--muted);
   font-size: 12px;
+  white-space: nowrap;
 }
 
 .url {
@@ -250,26 +247,5 @@ const { confirming, doConfirm } = useConfirm(
   color: #ffcf9a;
   font-size: 12px;
   text-align: right;
-}
-
-@media (max-width: 720px) {
-  .row {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .ops {
-    flex-wrap: wrap;
-  }
-
-  .ops button {
-    flex: 0 1 auto;
-    padding: 8px 12px;
-  }
-
-  .confirm-text {
-    flex: 1 1 100%;
-    text-align: left;
-  }
 }
 </style>

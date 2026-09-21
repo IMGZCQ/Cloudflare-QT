@@ -107,7 +107,10 @@ export const api = {
   resume: (id: string) =>
     request<{ item: TunnelItem; error?: string }>(`/api/tunnels/${id}/resume`, { method: 'POST' }),
 
-  logs: (id: string) => request<{ logs: string[] }>(`/api/tunnels/${id}/logs`),
+  logs: (id: string, from?: number) =>
+    request<{ logs: string[]; total: number }>(
+      `/api/tunnels/${id}/logs${from ? `?from=${from}` : ''}`,
+    ),
 
   downloadBinary: () => request<BinaryStatus>('/api/binary/download', { method: 'POST' }),
 }

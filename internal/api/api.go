@@ -8,6 +8,7 @@ import (
 	"errors"
 	"io/fs"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"cfquicktunnel/internal/store"
@@ -220,12 +221,13 @@ func (s *Server) handleResume(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {
-	logs, err := s.mgr.Logs(r.PathValue("id"))
+	from, _ := strconv.ParseUint(r.URL.Query().Get("from"), 10, 64)
+	logs, total, err := s.mgr.Logs(r.PathValue("id"), from)
 	if err != nil {
 		writeError(w, statusOf(err), err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"logs": logs})
+	writeJSON(w, http.StatusOK, map[string]any{"logs": logs, "total": total})
 }
 
 func (s *Server) handleBinary(w http.ResponseWriter, r *http.Request) {
