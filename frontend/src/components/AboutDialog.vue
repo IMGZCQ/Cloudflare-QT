@@ -81,7 +81,7 @@ const info = [
   align-items: center;
   justify-content: center;
   padding: 20px;
-  background: rgba(6, 9, 16, 0.72);
+  background: var(--mask);
 }
 
 .dialog {
@@ -196,7 +196,7 @@ dd {
   align-items: center;
   justify-content: center;
   padding: 20px;
-  background: rgba(6, 9, 16, 0.72);
+  background: var(--mask);
 }
 
 .pay-dialog {

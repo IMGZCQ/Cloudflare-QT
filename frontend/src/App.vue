@@ -13,7 +13,7 @@ import Icon from './components/Icon.vue'
 const items = ref<TunnelItem[]>([])
 const binary = ref<BinaryStatus | null>(null)
 const message = ref('')
-const messageKind = ref<'ok' | 'err'>('ok')
+const messageKind = ref<'ok' | 'err' | 'hint'>('ok')
 const busy = ref<Record<string, boolean>>({})
 const formOpen = ref(false)
 const editing = ref<TunnelItem | null>(null)
@@ -28,13 +28,28 @@ const viewMode = ref<ViewMode>(
 )
 watch(viewMode, (v) => localStorage.setItem(VIEW_KEY, v))
 
+// 主题：dark（深色，默认） / light（浅色），同步到 <html data-theme> 并持久化
+type Theme = 'dark' | 'light'
+const THEME_KEY = 'cfqt.theme'
+const theme = ref<Theme>(
+  (localStorage.getItem(THEME_KEY) as Theme | null) === 'light' ? 'light' : 'dark',
+)
+function applyTheme(v: Theme) {
+  if (v === 'light') document.documentElement.dataset.theme = 'light'
+  else delete document.documentElement.dataset.theme
+}
+applyTheme(theme.value)
+watch(theme, (v) => {
+  applyTheme(v)
+  localStorage.setItem(THEME_KEY, v)
+})
+
 let timer: number | undefined
 let etag = ''
 
-// 首次创建隧道提示：仅程序首次安装后弹一次，10 秒后消失
-const FIRST_HINT_KEY = 'cfqt.firstTunnelHintShown'
+// 首次/唯一隧道提示：创建成功且当前仅此一条时给出初始化提示，10 秒后消失
 
-function notify(text: string, kind: 'ok' | 'err' = 'ok', duration = 5000) {
+function notify(text: string, kind: 'ok' | 'err' | 'hint' = 'ok', duration = 5000) {
   message.value = text
   messageKind.value = kind
   if (text) {
@@ -45,7 +60,7 @@ function notify(text: string, kind: 'ok' | 'err' = 'ok', duration = 5000) {
 }
 
 function notifyFirstTunnel() {
-  notify('首次建立隧道需要初始化，请稍后或尝试刷新…', 'ok', 10000)
+  notify('首次建立隧道需要初始化，请稍后或尝试刷新…', 'hint', 15000)
 }
 
 async function refresh() {
@@ -119,6 +134,8 @@ function closeForm() {
 
 async function submitForm(payload: TunnelPayload) {
   const id = editing.value?.id
+  // 记录创建前是否为空列表：用于判断这是当前唯一一条隧道
+  const wasEmpty = !id && items.value.length === 0
   await withBusy(id ?? 'new', async () => {
     // 后端保存后立刻返回（需要重启时在后台进行），这里直接关表单，条目以“启动中”呈现
     const res = id ? await api.update(id, payload) : await api.create(payload)
@@ -126,8 +143,7 @@ async function submitForm(payload: TunnelPayload) {
     editing.value = null
     applyResult(res)
     if (!res.error) {
-      if (!id && !localStorage.getItem(FIRST_HINT_KEY)) {
-        localStorage.setItem(FIRST_HINT_KEY, '1')
+      if (wasEmpty) {
         notifyFirstTunnel()
       } else {
         notify(id ? '已保存' : '已新增隧道')
@@ -227,12 +243,20 @@ onUnmounted(() => {
         >
           <Icon :name="viewMode === 'list' ? 'view-list' : 'view-grid'" />
         </button>
+        <button
+          class="view-toggle"
+          :title="theme === 'dark' ? '切换到浅色模式' : '切换到深色模式'"
+          :aria-label="theme === 'dark' ? '当前为深色模式，点击切换到浅色模式' : '当前为浅色模式，点击切换到深色模式'"
+          @click="theme = theme === 'dark' ? 'light' : 'dark'"
+        >
+          <Icon :name="theme === 'dark' ? 'sun' : 'moon'" />
+        </button>
         <button @click="aboutOpen = true">关于</button>
         <button class="primary" :disabled="busy['new']" @click="openCreate">新增隧道</button>
       </div>
     </header>
 
-    <div v-if="message || binary" class="binary" :class="{ warn: !message && binary && !binary.ready, err: message && messageKind === 'err' }">
+    <div v-if="message || binary" class="binary" :class="{ warn: !message && binary && !binary.ready, err: message && messageKind === 'err', hint: message && messageKind === 'hint' }">
       <span v-if="message">{{ message }}</span>
       <template v-else-if="binary">
         <span v-if="binary.ready">
@@ -356,7 +380,7 @@ onUnmounted(() => {
 .icon-btn.copied {
   background: var(--ok);
   border-color: var(--ok);
-  color: #0d1f14;
+  color: var(--on-ok);
 }
 
 .page {
@@ -422,7 +446,15 @@ h1 {
 
 .binary.err {
   border-left-color: var(--err);
-  color: #ffb4b0;
+  color: var(--err-text);
+}
+
+/* 唯一隧道初始化提示：更大、加粗、亮黄色 */
+.binary.hint {
+  border-left-color: var(--accent);
+  color: var(--accent);
+  font-size: 15px;
+  font-weight: 700;
 }
 
 .list {

@@ -172,7 +172,7 @@ onUnmounted(() => {
 .icon-btn.copied {
   background: var(--ok);
   border-color: var(--ok);
-  color: #0d1f14;
+  color: var(--on-ok);
 }
 
 pre {

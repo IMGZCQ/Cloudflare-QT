@@ -4,6 +4,12 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Cloudflare快捷隧道</title>
+    <script>
+      // 首屏渲染前恢复主题，避免深色→浅色闪烁
+      if (localStorage.getItem('cfqt.theme') === 'light') {
+        document.documentElement.dataset.theme = 'light'
+      }
+    </script>
   </head>
   <body>
     <div id="app"></div>

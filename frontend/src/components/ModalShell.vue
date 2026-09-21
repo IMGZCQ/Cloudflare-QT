@@ -43,7 +43,7 @@ onUnmounted(() => {
 .mask {
   position: fixed;
   inset: 0;
-  background: rgba(8, 12, 22, 0.7);
+  background: var(--mask-modal);
   display: flex;
   align-items: flex-start;
   justify-content: center;

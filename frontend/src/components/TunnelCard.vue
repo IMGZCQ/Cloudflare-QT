@@ -153,7 +153,7 @@ const { confirming, doConfirm } = useConfirm(
 }
 
 .card.state-paused {
-  border-left-color: #e8c547;
+  border-left-color: var(--warn);
 }
 
 .card.state-error {
@@ -194,7 +194,7 @@ const { confirming, doConfirm } = useConfirm(
 }
 
 .dot.paused {
-  background: #e8c547;
+  background: var(--warn);
 }
 
 .dot.error {
@@ -253,12 +253,12 @@ const { confirming, doConfirm } = useConfirm(
 
 .tip {
   font-size: 12px;
-  color: #8fd6a0;
+  color: var(--ok-text);
   white-space: nowrap;
 }
 
 .err {
-  color: #ffb4b0;
+  color: var(--err-text);
   font-size: 12px;
 }
 
@@ -291,7 +291,7 @@ const { confirming, doConfirm } = useConfirm(
 .row button.copied {
   background: var(--ok);
   border-color: var(--ok);
-  color: #0d1f14;
+  color: var(--on-ok);
   font-weight: 600;
 }
 

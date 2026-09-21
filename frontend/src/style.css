@@ -2,6 +2,8 @@
   box-sizing: border-box;
 }
 
+/* ============ 主题变量 ============ */
+/* 深色（默认） */
 :root {
   --bg: #0f1420;
   --panel: #171e2e;
@@ -13,7 +15,39 @@
   --ok: #37c26a;
   --err: #ef5350;
   --blue: #4da3ff;
+  --warn: #e8c547;
+  /* 语义化派生色 */
+  --on-accent: #1a1205;
+  --on-ok: #0d1f14;
+  --err-text: #ffb4b0;
+  --ok-text: #8fd6a0;
+  --warn-text: #ffcf9a;
+  --mask: rgba(6, 9, 16, 0.72);
+  --mask-modal: rgba(8, 12, 22, 0.7);
   color-scheme: dark;
+}
+
+/* 浅色 */
+:root[data-theme='light'] {
+  --bg: #f3f5f9;
+  --panel: #ffffff;
+  --panel-2: #eef1f6;
+  --border: #d9dfe8;
+  --text: #1c2433;
+  --muted: #5f6b80;
+  --accent: #e8720c;
+  --ok: #1f9e52;
+  --err: #d32f2f;
+  --blue: #1d78d6;
+  --warn: #c8a018;
+  --on-accent: #fff7ee;
+  --on-ok: #ffffff;
+  --err-text: #c62828;
+  --ok-text: #1b7f43;
+  --warn-text: #9a6f00;
+  --mask: rgba(230, 234, 242, 0.72);
+  --mask-modal: rgba(226, 231, 240, 0.7);
+  color-scheme: light;
 }
 
 body {
@@ -22,6 +56,7 @@ body {
   color: var(--text);
   font-family: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
   font-size: 14px;
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
 
 button {
@@ -46,7 +81,7 @@ button:disabled {
 button.primary {
   background: var(--accent);
   border-color: var(--accent);
-  color: #1a1205;
+  color: var(--on-accent);
   font-weight: 600;
 }
 
@@ -58,7 +93,7 @@ button.danger:hover:not(:disabled) {
 button.confirm-danger {
   background: var(--err);
   border-color: var(--err);
-  color: #e6ebf5;
+  color: #fff;
   font-weight: 600;
 }
 

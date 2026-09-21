@@ -1,6 +1,6 @@
 <script setup lang="ts">
 defineProps<{
-  name: 'play' | 'stop' | 'pause' | 'resume' | 'edit' | 'logs' | 'trash' | 'copy' | 'check' | 'view-list' | 'view-grid'
+  name: 'play' | 'stop' | 'pause' | 'resume' | 'edit' | 'logs' | 'trash' | 'copy' | 'check' | 'view-list' | 'view-grid' | 'sun' | 'moon'
 }>()
 </script>
 
@@ -62,6 +62,17 @@ defineProps<{
     <rect x="14" y="3" width="7" height="7" rx="1.2" fill="none" stroke="currentColor" stroke-width="2"/>
     <rect x="3" y="14" width="7" height="7" rx="1.2" fill="none" stroke="currentColor" stroke-width="2"/>
     <rect x="14" y="14" width="7" height="7" rx="1.2" fill="none" stroke="currentColor" stroke-width="2"/>
+  </svg>
+
+  <!-- 浅色模式：太阳 -->
+  <svg v-else-if="name === 'sun'" viewBox="0 0 24 24" aria-hidden="true">
+    <circle cx="12" cy="12" r="4.5" fill="none" stroke="currentColor" stroke-width="2"/>
+    <path d="M12 2.5v2.5M12 19v2.5M2.5 12H5M19 12h2.5M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M19.1 4.9l-1.8 1.8M6.7 17.3l-1.8 1.8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+  </svg>
+
+  <!-- 深色模式：月亮 -->
+  <svg v-else-if="name === 'moon'" viewBox="0 0 24 24" aria-hidden="true">
+    <path d="M20.5 14.5A8.5 8.5 0 019.5 3.5a8.5 8.5 0 1011 11z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
   </svg>
 </template>
 
