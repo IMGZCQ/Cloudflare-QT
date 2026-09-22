@@ -120,6 +120,7 @@ onUnmounted(() => {
   border: 1px solid var(--border);
   border-radius: 8px;
   overflow: hidden;
+  box-shadow: var(--shadow-sm);
 }
 
 .head {

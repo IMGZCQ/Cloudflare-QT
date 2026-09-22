@@ -28,7 +28,7 @@ const info = [
         <ul>
           <li>新增隧道 > 填写地址 > 保存启动 > Enjoy it！</li>
 <!--           <li>首次使用先确认顶部提示 cloudflared 已就绪，缺失时点「立即下载」自动获取。</li>
-          <li>点「新增隧道」填写本地地址与端口（如 <code>127.0.0.1:8080</code>）后保存。</li>
+          <li>点「新增隧道」填写本地地址与端口（如 <code>http://127.0.0.1:5666</code>）后保存。</li>
           <li>启动需要十几秒，条目会从「启动中」变为「运行中」并显示公网地址，可一键复制。</li>
           <li>编辑时只改备注或自动启动不会断开连接，仅当地址或端口变化才在后台重启隧道。</li>
           <li>点「日志」可查看 cloudflared 的实时输出，启动失败时先看这里。</li> -->
@@ -94,6 +94,7 @@ const info = [
   border: 1px solid var(--border);
   border-radius: 10px;
   overflow: hidden;
+  box-shadow: var(--shadow);
 }
 
 .head {

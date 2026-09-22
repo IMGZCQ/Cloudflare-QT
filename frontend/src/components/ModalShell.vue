@@ -61,6 +61,7 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   max-height: calc(100vh - 96px);
+  box-shadow: var(--shadow);
 }
 
 .head {

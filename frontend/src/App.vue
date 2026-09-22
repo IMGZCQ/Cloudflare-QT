@@ -5,6 +5,7 @@ import { appVersion } from './appInfo'
 import TunnelForm from './components/TunnelForm.vue'
 import TunnelRow from './components/TunnelRow.vue'
 import TunnelCard from './components/TunnelCard.vue'
+import TunnelCompactCard from './components/TunnelCompactCard.vue'
 import LogPanel from './components/LogPanel.vue'
 import ModalShell from './components/ModalShell.vue'
 import AboutDialog from './components/AboutDialog.vue'
@@ -20,13 +21,18 @@ const editing = ref<TunnelItem | null>(null)
 const logId = ref('')
 const aboutOpen = ref(false)
 
-// 视图模式：list（列表） / card（卡片），持久化到 localStorage
-type ViewMode = 'list' | 'card'
+// 视图模式：list（列表） / card（卡片） / compact（极简），持久化到 localStorage
+type ViewMode = 'list' | 'card' | 'compact'
 const VIEW_KEY = 'cfqt.viewMode'
-const viewMode = ref<ViewMode>(
-  (localStorage.getItem(VIEW_KEY) as ViewMode | null) === 'card' ? 'card' : 'list',
-)
+const VIEW_MODES: ViewMode[] = ['list', 'card', 'compact']
+const storedView = localStorage.getItem(VIEW_KEY) as ViewMode | null
+const viewMode = ref<ViewMode>(storedView && VIEW_MODES.includes(storedView) ? storedView : 'list')
 watch(viewMode, (v) => localStorage.setItem(VIEW_KEY, v))
+
+function cycleView() {
+  const idx = VIEW_MODES.indexOf(viewMode.value)
+  viewMode.value = VIEW_MODES[(idx + 1) % VIEW_MODES.length]
+}
 
 // 主题：dark（深色，默认） / light（浅色），同步到 <html data-theme> 并持久化
 type Theme = 'dark' | 'light'
@@ -237,11 +243,11 @@ onUnmounted(() => {
       <div class="ops">
         <button
           class="view-toggle"
-          :title="viewMode === 'list' ? '切换到卡片视图' : '切换到列表视图'"
-          :aria-label="viewMode === 'list' ? '当前为列表视图，点击切换到卡片视图' : '当前为卡片视图，点击切换到列表视图'"
-          @click="viewMode = viewMode === 'list' ? 'card' : 'list'"
+          :title="viewMode === 'list' ? '切换到卡片视图' : viewMode === 'card' ? '切换到极简视图' : '切换到列表视图'"
+          :aria-label="viewMode === 'list' ? '当前为列表视图，点击切换到卡片视图' : viewMode === 'card' ? '当前为卡片视图，点击切换到极简视图' : '当前为极简视图，点击切换到列表视图'"
+          @click="cycleView"
         >
-          <Icon :name="viewMode === 'list' ? 'view-list' : 'view-grid'" />
+          <Icon :name="viewMode === 'list' ? 'view-list' : viewMode === 'card' ? 'view-grid' : 'view-compact'" />
         </button>
         <button
           class="view-toggle"
@@ -307,7 +313,7 @@ onUnmounted(() => {
     </div>
 
     <!-- 卡片视图：自适应网格；编辑表单与日志用全屏浮层承载 -->
-    <div v-else-if="items.length" class="grid">
+    <div v-else-if="items.length && viewMode === 'card'" class="grid">
       <TunnelCard
         v-for="item in items"
         :key="item.id"
@@ -323,11 +329,25 @@ onUnmounted(() => {
       />
     </div>
 
-    <ModalShell v-if="viewMode === 'card' && editing" :title="'编辑隧道'" @close="closeForm">
+    <!-- 极简视图：更密的自适应网格，仅保留名称/状态与常用操作 -->
+    <div v-else-if="items.length" class="compact-grid">
+      <TunnelCompactCard
+        v-for="item in items"
+        :key="item.id"
+        :item="item"
+        :busy="!!busy[item.id]"
+        @start="start(item)"
+        @stop="stop(item)"
+        @pause="pause(item)"
+        @resume="resume(item)"
+      />
+    </div>
+
+    <ModalShell v-if="viewMode !== 'list' && editing" :title="'编辑隧道'" @close="closeForm">
       <TunnelForm :editing="editing" @submit="submitForm" @cancel="closeForm" />
     </ModalShell>
     <ModalShell
-      v-if="viewMode === 'card' && logId"
+      v-if="viewMode !== 'list' && logId"
       :title="logTitle"
       @close="logId = ''"
     >
@@ -438,6 +458,7 @@ h1 {
   border-radius: 6px;
   color: var(--muted);
   font-size: 13px;
+  box-shadow: var(--shadow-sm);
 }
 
 .binary.warn {
@@ -481,6 +502,32 @@ h1 {
 
 .grid > :deep(.card) {
   height: 100%;
+}
+
+/* 极简视图：更密的网格，940px 容器一行 4 列 */
+.compact-grid {
+  margin-top: 16px;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+
+@media (max-width: 940px) {
+  .compact-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (max-width: 720px) {
+  .compact-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 440px) {
+  .compact-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .view-toggle {

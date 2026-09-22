@@ -1,6 +1,6 @@
 <script setup lang="ts">
 defineProps<{
-  name: 'play' | 'stop' | 'pause' | 'resume' | 'edit' | 'logs' | 'trash' | 'copy' | 'check' | 'view-list' | 'view-grid' | 'sun' | 'moon'
+  name: 'play' | 'stop' | 'pause' | 'resume' | 'edit' | 'logs' | 'trash' | 'copy' | 'check' | 'view-list' | 'view-grid' | 'view-compact' | 'sun' | 'moon'
 }>()
 </script>
 
@@ -62,6 +62,19 @@ defineProps<{
     <rect x="14" y="3" width="7" height="7" rx="1.2" fill="none" stroke="currentColor" stroke-width="2"/>
     <rect x="3" y="14" width="7" height="7" rx="1.2" fill="none" stroke="currentColor" stroke-width="2"/>
     <rect x="14" y="14" width="7" height="7" rx="1.2" fill="none" stroke="currentColor" stroke-width="2"/>
+  </svg>
+
+  <!-- 极简视图：3x3 小方格 -->
+  <svg v-else-if="name === 'view-compact'" viewBox="0 0 24 24" aria-hidden="true">
+    <rect x="3" y="3" width="4.5" height="4.5" rx="1" fill="none" stroke="currentColor" stroke-width="1.6"/>
+    <rect x="9.75" y="3" width="4.5" height="4.5" rx="1" fill="none" stroke="currentColor" stroke-width="1.6"/>
+    <rect x="16.5" y="3" width="4.5" height="4.5" rx="1" fill="none" stroke="currentColor" stroke-width="1.6"/>
+    <rect x="3" y="9.75" width="4.5" height="4.5" rx="1" fill="none" stroke="currentColor" stroke-width="1.6"/>
+    <rect x="9.75" y="9.75" width="4.5" height="4.5" rx="1" fill="none" stroke="currentColor" stroke-width="1.6"/>
+    <rect x="16.5" y="9.75" width="4.5" height="4.5" rx="1" fill="none" stroke="currentColor" stroke-width="1.6"/>
+    <rect x="3" y="16.5" width="4.5" height="4.5" rx="1" fill="none" stroke="currentColor" stroke-width="1.6"/>
+    <rect x="9.75" y="16.5" width="4.5" height="4.5" rx="1" fill="none" stroke="currentColor" stroke-width="1.6"/>
+    <rect x="16.5" y="16.5" width="4.5" height="4.5" rx="1" fill="none" stroke="currentColor" stroke-width="1.6"/>
   </svg>
 
   <!-- 浅色模式：太阳 -->

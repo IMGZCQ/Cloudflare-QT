@@ -24,17 +24,21 @@
   --warn-text: #ffcf9a;
   --mask: rgba(6, 9, 16, 0.72);
   --mask-modal: rgba(8, 12, 22, 0.7);
+  --shadow: 0 10px 28px rgba(4, 8, 18, 0.42);
+  --shadow-sm: 0 2px 8px rgba(4, 8, 18, 0.3);
+  --btn-bg: var(--panel-2);
+  --btn-hover: #28314a;
   color-scheme: dark;
 }
 
 /* 浅色 */
 :root[data-theme='light'] {
-  --bg: #f3f5f9;
+  --bg: #f7f8fa;
   --panel: #ffffff;
-  --panel-2: #eef1f6;
-  --border: #d9dfe8;
-  --text: #1c2433;
-  --muted: #5f6b80;
+  --panel-2: #f0f2f6;
+  --border: #dde2ea;
+  --text: #2c323f;
+  --muted: #68748a;
   --accent: #e8720c;
   --ok: #1f9e52;
   --err: #d32f2f;
@@ -47,6 +51,10 @@
   --warn-text: #9a6f00;
   --mask: rgba(230, 234, 242, 0.72);
   --mask-modal: rgba(226, 231, 240, 0.7);
+  --shadow: 0 8px 24px rgba(28, 36, 51, 0.1);
+  --shadow-sm: 0 2px 8px rgba(28, 36, 51, 0.07);
+  --btn-bg: #e9ecf2;
+  --btn-hover: #dfe3ec;
   color-scheme: light;
 }
 
@@ -62,15 +70,16 @@ body {
 button {
   font: inherit;
   color: var(--text);
-  background: var(--panel-2);
-  border: 1px solid var(--border);
+  background: var(--btn-bg);
+  border: 1px solid transparent;
   border-radius: 6px;
   padding: 6px 12px;
   cursor: pointer;
+  transition: background-color 0.15s ease;
 }
 
 button:hover:not(:disabled) {
-  border-color: var(--accent);
+  background: var(--btn-hover);
 }
 
 button:disabled {
@@ -83,6 +92,11 @@ button.primary {
   border-color: var(--accent);
   color: var(--on-accent);
   font-weight: 600;
+}
+
+button.primary:hover:not(:disabled) {
+  background: var(--accent);
+  filter: brightness(1.06);
 }
 
 button.danger:hover:not(:disabled) {
@@ -105,11 +119,12 @@ input,
 select {
   font: inherit;
   color: var(--text);
-  background: var(--panel-2);
+  background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 6px;
   padding: 7px 10px;
   width: 100%;
+  transition: border-color 0.15s ease;
 }
 
 input:focus,

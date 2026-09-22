@@ -7,7 +7,7 @@ const emit = defineEmits<{ submit: [TunnelPayload]; cancel: [] }>()
 
 const form = reactive({
   name: '',
-  target: 'http://127.0.0.1:8080',
+  target: 'http://127.0.0.1:5666',
   autoStart: false,
 })
 
@@ -15,7 +15,7 @@ watch(
   () => props.editing,
   (item) => {
     form.name = item?.name ?? ''
-    form.target = item ? `${item.scheme}://${item.host}:${item.port}${item.path}` : 'http://127.0.0.1:8080'
+    form.target = item ? `${item.scheme}://${item.host}:${item.port}${item.path}` : 'http://127.0.0.1:5666'
     form.autoStart = item?.autoStart ?? true
   },
   { immediate: true },
@@ -62,6 +62,7 @@ function submit() {
   border: 1px solid var(--border);
   border-left: 3px solid var(--blue);
   border-radius: 8px;
+  box-shadow: var(--shadow-sm);
 }
 
 h2 {

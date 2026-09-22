@@ -108,6 +108,12 @@ const { confirming, doConfirm } = useConfirm(
   border: 1px solid var(--border);
   border-left: 3px solid var(--muted);
   border-radius: 8px;
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow 0.15s ease;
+}
+
+.row:hover {
+  box-shadow: var(--shadow);
 }
 
 .row.state-running {

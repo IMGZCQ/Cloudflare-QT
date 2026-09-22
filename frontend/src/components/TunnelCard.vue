@@ -142,6 +142,12 @@ const { confirming, doConfirm } = useConfirm(
   border-left: 3px solid var(--muted);
   border-radius: 12px;
   min-width: 0;
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow 0.15s ease;
+}
+
+.card:hover {
+  box-shadow: var(--shadow);
 }
 
 .card.state-running {
