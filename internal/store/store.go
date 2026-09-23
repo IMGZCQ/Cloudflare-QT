@@ -20,20 +20,31 @@ import (
 
 // Tunnel 一条隧道配置（临时隧道的公网地址每次启动都会变化，因此不持久化）
 type Tunnel struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	Scheme    string `json:"scheme"` // http | https
-	Host      string `json:"host"`   // 本地地址，如 127.0.0.1
-	Port      int    `json:"port"`
-	Path      string `json:"path"` // 可选路径前缀，如 /123/456/
-	AutoStart bool   `json:"autoStart"`
-	Paused    bool   `json:"paused"` // 暂停偏好，重启后恢复暂停状态
-	CreatedAt int64  `json:"createdAt"`
+	ID            string `json:"id"`
+	Name          string `json:"name"`
+	Scheme        string `json:"scheme"` // http | https
+	Host          string `json:"host"`   // 本地地址，如 127.0.0.1
+	Port          int    `json:"port"`
+	Path          string `json:"path"`          // 可选路径前缀，如 /123/456/
+	EdgeIPVersion string `json:"edgeIpVersion"` // auto | 4 | 6，对应 cloudflared --edge-ip-version
+	AutoStart     bool   `json:"autoStart"`
+	Paused        bool   `json:"paused"` // 暂停偏好，重启后恢复暂停状态
+	CreatedAt     int64  `json:"createdAt"`
 }
 
 // Target 拼出 cloudflared --url 需要的本地地址
 func (t Tunnel) Target() string {
 	return fmt.Sprintf("%s://%s:%d%s", t.Scheme, t.Host, t.Port, t.Path)
+}
+
+// EdgeIPArg 返回 cloudflared --edge-ip-version 的参数值；空/未知值一律按 IPv4 处理
+func (t Tunnel) EdgeIPArg() string {
+	switch t.EdgeIPVersion {
+	case "6", "auto":
+		return t.EdgeIPVersion
+	default:
+		return "4"
+	}
 }
 
 // Normalize 校验并补全字段
@@ -42,7 +53,14 @@ func (t *Tunnel) Normalize() error {
 	t.Host = strings.TrimSpace(t.Host)
 	t.Scheme = strings.ToLower(strings.TrimSpace(t.Scheme))
 	t.Path = strings.TrimSpace(t.Path)
+	t.EdgeIPVersion = strings.TrimSpace(t.EdgeIPVersion)
 
+	if t.EdgeIPVersion == "" {
+		t.EdgeIPVersion = "4"
+	}
+	if t.EdgeIPVersion != "auto" && t.EdgeIPVersion != "4" && t.EdgeIPVersion != "6" {
+		return errors.New("IP 版本只支持 auto / 4 / 6")
+	}
 	if t.Scheme == "" {
 		t.Scheme = "http"
 	}
@@ -138,6 +156,20 @@ func Open() (*Store, error) {
 	if len(strings.TrimSpace(string(raw))) > 0 {
 		if err := json.Unmarshal(raw, &s.data); err != nil {
 			return nil, fmt.Errorf("解析 %s 失败: %w", s.path, err)
+		}
+	}
+	// 兼容老配置：补全新增字段的默认值并回写
+	migrated := false
+	for i := range s.data.Tunnels {
+		t := &s.data.Tunnels[i]
+		if t.EdgeIPVersion == "" {
+			t.EdgeIPVersion = "4"
+			migrated = true
+		}
+	}
+	if migrated {
+		if err := s.flush(); err != nil {
+			return nil, err
 		}
 	}
 	return s, nil

@@ -57,7 +57,7 @@ func (m *Manager) Start(ctx context.Context, id string) error {
 		return err
 	}
 
-	args := []string{"tunnel", "--no-autoupdate", "--protocol", "auto", "--edge-ip-version", "auto", "--retries", "20", "--url", proxyAddr}
+	args := []string{"tunnel", "--no-autoupdate", "--protocol", "auto", "--edge-ip-version", cfg.EdgeIPArg(), "--retries", "20", "--url", proxyAddr}
 	cmd := exec.Command(config.CloudflaredPath(), args...)
 	hideWindow(cmd)
 	stdout, err := cmd.StdoutPipe()

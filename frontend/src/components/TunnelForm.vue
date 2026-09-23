@@ -8,6 +8,7 @@ const emit = defineEmits<{ submit: [TunnelPayload]; cancel: [] }>()
 const form = reactive({
   name: '',
   target: 'http://127.0.0.1:5666',
+  edgeIpVersion: '4',
   autoStart: false,
 })
 
@@ -16,6 +17,7 @@ watch(
   (item) => {
     form.name = item?.name ?? ''
     form.target = item ? `${item.scheme}://${item.host}:${item.port}${item.path}` : 'http://127.0.0.1:5666'
+    form.edgeIpVersion = item?.edgeIpVersion || '4'
     form.autoStart = item?.autoStart ?? true
   },
   { immediate: true },
@@ -25,6 +27,7 @@ function submit() {
   emit('submit', {
     name: form.name,
     target: form.target,
+    edgeIpVersion: form.edgeIpVersion,
     autoStart: form.autoStart,
   } as TunnelPayload)
 }
@@ -37,6 +40,14 @@ function submit() {
       <label>
         <span>隧道名称</span>
         <input v-model="form.name" placeholder="（选填）" />
+      </label>
+      <label>
+        <span>隧道连接方式</span>
+        <select v-model="form.edgeIpVersion">
+          <option value="auto">自动</option>
+          <option value="4">IPv4</option>
+          <option value="6">IPv6</option>
+        </select>
       </label>
       <label>
         <span>输入地址（协议://地址:端口/路径 等）</span>
@@ -82,13 +93,17 @@ label + label {
 
 .grid {
   display: grid;
-  grid-template-columns: 1fr 2fr;
+  grid-template-columns: 1fr auto 2fr;
   gap: 12px;
   margin-top: 0;
 }
 
 .grid label + label {
   margin-top: 0;
+}
+
+.grid select {
+  min-width: 92px;
 }
 
 @media (max-width: 720px) {

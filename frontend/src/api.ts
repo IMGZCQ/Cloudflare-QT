@@ -7,6 +7,7 @@ export interface TunnelItem {
   host: string
   port: number
   path: string
+  edgeIpVersion: string
   autoStart: boolean
   paused: boolean
   createdAt: number
@@ -32,6 +33,7 @@ export interface TunnelPayload {
   host: string
   port: number
   path: string
+  edgeIpVersion: string
   autoStart: boolean
   target?: string
 }

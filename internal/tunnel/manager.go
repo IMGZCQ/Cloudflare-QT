@@ -181,10 +181,10 @@ func (m *Manager) Update(id string, cfg store.Tunnel) (Item, error) {
 		return Item{}, err
 	}
 
-	// 目标变化时，运行中/启动中/已暂停都需要重启（暂停偏好在重启后由 Start 恢复）
+	// 目标或边缘 IP 版本变化时，运行中/启动中/已暂停都需要重启（暂停偏好在重启后由 Start 恢复）
 	state, _, _, _, _ := m.getInstance(id).snapshot()
 	live := state == StateRunning || state == StateStarting || state == StatePaused
-	restart := live && cfg.Target() != old.Target()
+	restart := live && (cfg.Target() != old.Target() || cfg.EdgeIPArg() != old.EdgeIPArg())
 
 	// 先落库：配置校验或写入失败时不会连带停掉正在运行的隧道
 	saved, err := m.st.Update(id, cfg)

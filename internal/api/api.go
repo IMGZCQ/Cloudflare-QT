@@ -113,6 +113,7 @@ func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
 		}
 		parsed.Name = cfg.Name
 		parsed.AutoStart = cfg.AutoStart
+		parsed.EdgeIPVersion = cfg.EdgeIPVersion
 		// 新建时 Paused 默认为 false，不接收前端提交
 		cfg = parsed
 	} else {
@@ -145,6 +146,7 @@ func (s *Server) handleUpdate(w http.ResponseWriter, r *http.Request) {
 		}
 		parsed.Name = cfg.Name
 		parsed.AutoStart = cfg.AutoStart
+		parsed.EdgeIPVersion = cfg.EdgeIPVersion
 		cfg = parsed
 	}
 	// Paused 由 Manager.Update 从旧值继承，这里不接收前端提交，避免被误覆盖
