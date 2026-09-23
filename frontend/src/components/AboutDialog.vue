@@ -27,6 +27,10 @@ const info = [
         <h3>使用说明</h3>
         <ul>
           <li>新增隧道 > 填写地址 > 保存启动 > Enjoy it！</li>
+          <li>
+            隧道故障错误码速查表：
+            <a class="repo-link" href="https://github.com/IMGZCQ/Cloudflare-QT#%E9%9A%A7%E9%81%93%E6%95%85%E9%9A%9C%E9%80%9F%E6%9F%A5%E8%A1%A8" target="_blank" rel="noreferrer">查看</a>
+          </li>
 <!--           <li>首次使用先确认顶部提示 cloudflared 已就绪，缺失时点「立即下载」自动获取。</li>
           <li>点「新增隧道」填写本地地址与端口（如 <code>http://127.0.0.1:5666</code>）后保存。</li>
           <li>启动需要十几秒，条目会从「启动中」变为「运行中」并显示公网地址，可一键复制。</li>
