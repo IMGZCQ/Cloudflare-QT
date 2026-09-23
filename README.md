@@ -14,9 +14,10 @@
 - **开机自启 / 后台运行**（桌面端）：基于 Wails 的系统托盘与自启动
 - **跨平台服务端**：Windows / Linux / macOS / FreeBSD，支持 fnOS 统一网关接入（Unix Socket）
 
-<img width="986" height="661" alt="PixPin_2026-09-19_01-08-19" src="https://github.com/user-attachments/assets/bb3e430d-29e8-4507-b711-098af449202a" />
+<img width="767" height="840" alt="极简" src="https://github.com/user-attachments/assets/c3eef94e-092e-4c31-9506-c9405e19d6e8" />
+<img width="948" height="927" alt="卡片" src="https://github.com/user-attachments/assets/028769ec-00d0-489c-9b1b-deeb2dd0a696" />
+<img width="948" height="927" alt="列表" src="https://github.com/user-attachments/assets/992b3533-323e-44ec-b595-69d078ad3a5a" />
 
-<img width="986" height="781" alt="PixPin_2026-09-19_01-06-24" src="https://github.com/user-attachments/assets/78840445-55a9-4320-953f-f9e6d76d0a08" />
 
 ## 快速开始
 
