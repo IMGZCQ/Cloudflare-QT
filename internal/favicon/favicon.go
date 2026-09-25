@@ -7,6 +7,7 @@ package favicon
 import (
 	"context"
 	"crypto/sha1"
+	"crypto/tls"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -47,7 +48,7 @@ var (
 )
 
 // meta 持久化文件：记录每条隧道上次抓取的目标地址 hash 与保存的文件名
-// File 为空串表示已抓取但失败（避免重启后反复请求死站）
+// File 为空串表示已抓取但失败；启动时会重试失败项一次
 type meta struct {
 	TargetHash string `json:"targetHash"`
 	File       string `json:"file"`
@@ -95,7 +96,8 @@ func (c *Cache) FileInfo(tunnelID string) (string, int64) {
 }
 
 // Ensure 如果目标地址有变化（或从未抓取过）则异步抓取 favicon
-// 注意：无论成功失败都会写入 meta，避免每次启动反复请求失败的站点
+// 成功缓存 + 地址未变：跳过
+// 失败记录：仅在启动后的首次调用重试（通过 inflight 防止并发），运行期不重复请求死站
 func (c *Cache) Ensure(tunnelID, target string) {
 	target = strings.TrimSpace(target)
 	if target == "" {
@@ -105,7 +107,8 @@ func (c *Cache) Ensure(tunnelID, target string) {
 
 	c.mu.Lock()
 	m, ok := c.meta[tunnelID]
-	if ok && m.TargetHash == hash {
+	if ok && m.TargetHash == hash && m.File != "" {
+		// 已成功且地址未变：跳过
 		c.mu.Unlock()
 		return
 	}
@@ -131,7 +134,7 @@ func (c *Cache) Ensure(tunnelID, target string) {
 		defer c.mu.Unlock()
 
 		if err != nil || len(data) == 0 {
-			// 失败也记录 hash，避免下次启动再次抓取同一地址
+			// 失败记录 hash；启动时会重试一次
 			c.meta[tunnelID] = meta{TargetHash: hash, File: ""}
 			_ = c.flushLocked()
 			return
@@ -164,7 +167,7 @@ func fetchBestIcon(ctx context.Context, target string) ([]byte, string, error) {
 	}
 	req.Header.Set("User-Agent", userAgent)
 
-	client := &http.Client{Timeout: fetchTimeout}
+	client := newHTTPClient()
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, "", err
@@ -406,6 +409,18 @@ func (c *Cache) flushLocked() error {
 		return err
 	}
 	return os.Rename(tmp, c.metaPath())
+}
+
+// newHTTPClient 创建 HTTP 客户端。
+// 内网 HTTPS 服务常用自签名证书（如路由器/NAS 管理页），必须跳过证书校验才能抓取。
+// 安全性：favicon 仅用于 UI 展示，不传输敏感数据，跳过校验可接受。
+func newHTTPClient() *http.Client {
+	return &http.Client{
+		Timeout: fetchTimeout,
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		},
+	}
 }
 
 // hashTarget 计算目标地址的短 hash
