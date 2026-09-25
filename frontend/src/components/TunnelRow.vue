@@ -5,6 +5,7 @@ import { useCopy } from '../composables/useCopy'
 import { useConfirm } from '../composables/useConfirm'
 import { maskUrl } from '../utils'
 import Icon from './Icon.vue'
+import TunnelBadge from './TunnelBadge.vue'
 
 const props = defineProps<{ item: TunnelItem; busy: boolean }>()
 const emit = defineEmits<{ start: []; stop: []; pause: []; resume: []; edit: []; remove: []; logs: [] }>()
@@ -36,7 +37,7 @@ const { confirming, doConfirm } = useConfirm(
   <div class="row" :class="'state-' + item.state" :data-row-id="item.id" @pointerdown.self="confirming = ''">
     <div class="info">
       <div class="title">
-        <span class="dot" :class="item.state"></span>
+        <TunnelBadge :id="item.id" :state="item.state" :version="item.faviconMtime" :dot-size="16" :icon-size="28" />
         <strong>{{ item.name }}</strong>
         <span class="state">{{ stateText[item.state] }}<span v-if="item.state === 'starting'" class="spinner"></span></span>
         <span class="target"> {{ target }}<template v-if="item.pid"> · PID {{ item.pid }}</template></span>
@@ -106,7 +107,7 @@ const { confirming, doConfirm } = useConfirm(
   padding: 14px 16px;
   background: var(--panel);
   border: 1px solid var(--border);
-  border-left: 3px solid var(--muted);
+  border-left: 5px solid var(--muted);
   border-radius: 8px;
   box-shadow: var(--shadow-sm);
   transition: box-shadow 0.15s ease;
@@ -142,29 +143,6 @@ const { confirming, doConfirm } = useConfirm(
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
-}
-
-.dot {
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  background: var(--muted);
-}
-
-.dot.running {
-  background: var(--ok);
-}
-
-.dot.starting {
-  background: var(--accent);
-}
-
-.dot.paused {
-  background: var(--warn);
-}
-
-.dot.error {
-  background: var(--err);
 }
 
 .state {

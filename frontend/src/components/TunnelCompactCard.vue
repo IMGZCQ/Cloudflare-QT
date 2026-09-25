@@ -4,6 +4,7 @@ import type { TunnelItem } from '../api'
 import { useCopy } from '../composables/useCopy'
 import { useConfirm } from '../composables/useConfirm'
 import Icon from './Icon.vue'
+import TunnelBadge from './TunnelBadge.vue'
 
 const props = defineProps<{ item: TunnelItem; busy: boolean }>()
 const emit = defineEmits<{
@@ -44,7 +45,7 @@ function onCardClick() {
     @click="onCardClick"
   >
     <div class="head">
-      <span class="dot" :class="item.state"></span>
+      <TunnelBadge :id="item.id" :state="item.state" :version="item.faviconMtime" :dot-size="12" :icon-size="22" />
       <strong v-if="copied" class="name copied-text">已复制地址</strong>
       <strong v-else class="name" :title="item.name">{{ item.name }}</strong>
       <span v-if="item.state === 'starting'" class="spinner"></span>
@@ -107,7 +108,7 @@ function onCardClick() {
   padding: 8px 10px;
   background: var(--panel);
   border: 1px solid var(--border);
-  border-left: 3px solid var(--muted);
+  border-left: 5px solid var(--muted);
   border-radius: 8px;
   min-width: 0;
   box-shadow: var(--shadow-sm);
@@ -140,30 +141,6 @@ function onCardClick() {
   gap: 7px;
   min-width: 0;
   flex: 1 1 auto;
-}
-
-.dot {
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  background: var(--muted);
-  flex-shrink: 0;
-}
-
-.dot.running {
-  background: var(--ok);
-}
-
-.dot.starting {
-  background: var(--accent);
-}
-
-.dot.paused {
-  background: var(--warn);
-}
-
-.dot.error {
-  background: var(--err);
 }
 
 .name {

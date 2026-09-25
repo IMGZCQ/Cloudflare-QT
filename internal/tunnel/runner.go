@@ -84,6 +84,8 @@ func (m *Manager) Start(ctx context.Context, id string) error {
 	in.pid = cmd.Process.Pid
 	in.startedAt = time.Now().Unix()
 	in.mu.Unlock()
+	// 分隔历史日志，便于区分新一轮启动
+	in.appendLog("────────── 启动隧道 ──────────")
 	in.appendLog("启动 cloudflared，目标 " + cfg.Target())
 
 	// cloudflared 把隧道地址写到 stderr，两路都扫描以适配版本差异

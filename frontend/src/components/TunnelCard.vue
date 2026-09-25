@@ -5,6 +5,7 @@ import { useCopy } from '../composables/useCopy'
 import { useConfirm } from '../composables/useConfirm'
 import { maskUrl } from '../utils'
 import Icon from './Icon.vue'
+import TunnelBadge from './TunnelBadge.vue'
 
 const props = defineProps<{ item: TunnelItem; busy: boolean }>()
 const emit = defineEmits<{
@@ -47,7 +48,7 @@ const { confirming, doConfirm } = useConfirm(
     <!-- 标题行：左 状态点+名称+状态文字 / 右 状态对应的主按钮 -->
     <div class="title-row">
       <div class="title">
-        <span class="dot" :class="item.state"></span>
+        <TunnelBadge :id="item.id" :state="item.state" :version="item.faviconMtime" :dot-size="16" :icon-size="28" />
         <strong>{{ item.name }}</strong>
         <span v-if="item.state === 'starting'" class="state">
           <span class="spinner"></span>
@@ -139,7 +140,7 @@ const { confirming, doConfirm } = useConfirm(
   padding: 18px 18px 16px;
   background: var(--panel);
   border: 1px solid var(--border);
-  border-left: 3px solid var(--muted);
+  border-left: 5px solid var(--muted);
   border-radius: 12px;
   min-width: 0;
   box-shadow: var(--shadow-sm);
@@ -181,30 +182,6 @@ const { confirming, doConfirm } = useConfirm(
   flex-wrap: wrap;
   min-width: 0;
   flex: 1 1 auto;
-}
-
-.dot {
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  background: var(--muted);
-  flex-shrink: 0;
-}
-
-.dot.running {
-  background: var(--ok);
-}
-
-.dot.starting {
-  background: var(--accent);
-}
-
-.dot.paused {
-  background: var(--warn);
-}
-
-.dot.error {
-  background: var(--err);
 }
 
 .state {

@@ -49,6 +49,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /api/tunnels/{id}/pause", s.handlePause)
 	s.mux.HandleFunc("POST /api/tunnels/{id}/resume", s.handleResume)
 	s.mux.HandleFunc("GET /api/tunnels/{id}/logs", s.handleLogs)
+	s.mux.HandleFunc("GET /api/tunnels/{id}/favicon", s.handleFavicon)
 	s.mux.HandleFunc("GET /api/binary", s.handleBinary)
 	s.mux.HandleFunc("POST /api/binary/download", s.handleBinaryDownload)
 }
@@ -230,6 +231,20 @@ func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"logs": logs, "total": total})
+}
+
+// handleFavicon 返回缓存的隧道 favicon；未缓存或抓取失败时返回 204
+// 响应头 X-Favicon-Version 暴露文件修改时间，供前端拼版本号破缓存
+func (s *Server) handleFavicon(w http.ResponseWriter, r *http.Request) {
+	p, mtime := s.mgr.FaviconInfo(r.PathValue("id"))
+	if p == "" {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	// 禁止强缓存：文件可能已更新但 URL 未变，让浏览器每次都校验 ETag
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("X-Favicon-Version", strconv.FormatInt(mtime, 10))
+	http.ServeFile(w, r, p)
 }
 
 func (s *Server) handleBinary(w http.ResponseWriter, r *http.Request) {

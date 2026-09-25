@@ -348,6 +348,7 @@ onUnmounted(() => {
     </ModalShell>
     <ModalShell
       v-if="viewMode !== 'list' && logId"
+      class="log-modal"
       :title="logTitle"
       @close="logId = ''"
     >
@@ -403,6 +404,11 @@ onUnmounted(() => {
   color: var(--on-ok);
 }
 
+/* 卡片/极简模式下日志弹窗与列表模式同宽 */
+.log-modal :deep(.box) {
+  max-width: 900px;
+}
+
 .page {
   max-width: 940px;
   margin: 0 auto;
@@ -454,7 +460,7 @@ h1 {
   padding: 10px 14px;
   background: var(--panel);
   border: 1px solid var(--border);
-  border-left: 3px solid var(--ok);
+  border-left: 5px solid var(--ok);
   border-radius: 6px;
   color: var(--muted);
   font-size: 13px;

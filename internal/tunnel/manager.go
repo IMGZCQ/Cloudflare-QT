@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"cfquicktunnel/internal/favicon"
 	"cfquicktunnel/internal/logbuf"
 	"cfquicktunnel/internal/store"
 )
@@ -32,11 +33,12 @@ var urlPattern = regexp.MustCompile(`https://[a-z0-9][a-z0-9-]*\.trycloudflare\.
 // Item 前端展示用的隧道视图（配置 + 运行态）
 type Item struct {
 	store.Tunnel
-	State     State  `json:"state"`
-	URL       string `json:"url"`
-	PID       int    `json:"pid"`
-	StartedAt int64  `json:"startedAt"`
-	LastError string `json:"lastError"`
+	State        State  `json:"state"`
+	URL          string `json:"url"`
+	PID          int    `json:"pid"`
+	StartedAt    int64  `json:"startedAt"`
+	LastError    string `json:"lastError"`
+	FaviconMtime int64  `json:"faviconMtime"` // favicon 文件修改时间，0 表示未缓存；前端用它做版本号破缓存
 }
 
 // instance 单条隧道的运行态
@@ -77,6 +79,7 @@ func (in *instance) snapshot() (State, string, int, int64, string) {
 type Manager struct {
 	st  *store.Store
 	bin binary
+	fav *favicon.Cache
 
 	mu   sync.Mutex
 	inst map[string]*instance
@@ -85,6 +88,14 @@ type Manager struct {
 // NewManager 创建管理器
 func NewManager(st *store.Store) *Manager {
 	m := &Manager{st: st, inst: make(map[string]*instance)}
+	// favicon 缓存加载失败不影响主流程
+	if fc, err := favicon.New(); err == nil {
+		m.fav = fc
+		// 启动时为存量隧道补抓 favicon（内部按 hash 去重，已有缓存的不会重复请求）
+		for _, cfg := range st.List() {
+			m.ensureFavicon(cfg)
+		}
+	}
 	// 注册下载完成回调：自动重试因等待二进制而进入 error 状态的隧道
 	m.bin.onReady(m.retryErrorTunnels)
 	return m
@@ -134,13 +145,15 @@ func (m *Manager) List() []Item {
 
 func (m *Manager) itemOf(cfg store.Tunnel) Item {
 	state, url, pid, startedAt, lastErr := m.getInstance(cfg.ID).snapshot()
+	_, favMtime := m.FaviconInfo(cfg.ID)
 	return Item{
-		Tunnel:    cfg,
-		State:     state,
-		URL:       url,
-		PID:       pid,
-		StartedAt: startedAt,
-		LastError: lastErr,
+		Tunnel:       cfg,
+		State:        state,
+		URL:          url,
+		PID:          pid,
+		StartedAt:    startedAt,
+		LastError:    lastErr,
+		FaviconMtime: favMtime,
 	}
 }
 
@@ -159,6 +172,7 @@ func (m *Manager) Create(cfg store.Tunnel) (Item, error) {
 	if err != nil {
 		return Item{}, err
 	}
+	m.ensureFavicon(saved)
 	item := m.itemOf(saved)
 	if saved.AutoStart {
 		m.startAsync(saved.ID)
@@ -190,6 +204,11 @@ func (m *Manager) Update(id string, cfg store.Tunnel) (Item, error) {
 	saved, err := m.st.Update(id, cfg)
 	if err != nil {
 		return Item{}, err
+	}
+
+	// 目标地址变化时重新抓取 favicon（ensureFavicon 内部做 hash 去重）
+	if cfg.Target() != old.Target() {
+		m.ensureFavicon(saved)
 	}
 
 	item := m.itemOf(saved)
@@ -224,6 +243,22 @@ func (m *Manager) Logs(id string, from uint64) ([]string, uint64, error) {
 	}
 	lines, total := m.getInstance(id).logs.LinesFrom(from)
 	return lines, total, nil
+}
+
+// ensureFavicon 在后台抓取该隧道的 favicon；目标地址未变化时自动跳过
+func (m *Manager) ensureFavicon(cfg store.Tunnel) {
+	if m.fav == nil {
+		return
+	}
+	m.fav.Ensure(cfg.ID, cfg.Target())
+}
+
+// FaviconInfo 返回隧道已缓存的 favicon 文件路径与修改时间；没有则返回空串和 0
+func (m *Manager) FaviconInfo(id string) (string, int64) {
+	if m.fav == nil {
+		return "", 0
+	}
+	return m.fav.FileInfo(id)
 }
 
 // Pause 暂停隧道：cloudflared 进程保持运行，本地代理切换为维护页面。

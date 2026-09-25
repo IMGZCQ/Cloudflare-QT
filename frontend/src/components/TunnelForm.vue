@@ -71,7 +71,7 @@ function submit() {
   padding: 16px;
   background: var(--panel);
   border: 1px solid var(--border);
-  border-left: 3px solid var(--blue);
+  border-left: 5px solid var(--blue);
   border-radius: 8px;
   box-shadow: var(--shadow-sm);
 }

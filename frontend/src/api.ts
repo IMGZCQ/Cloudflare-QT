@@ -16,6 +16,7 @@ export interface TunnelItem {
   pid: number
   startedAt: number
   lastError: string
+  faviconMtime: number
 }
 
 export interface BinaryStatus {

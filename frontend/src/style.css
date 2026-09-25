@@ -112,6 +112,9 @@ button.confirm-danger {
 }
 
 button.confirm-danger:hover:not(:disabled) {
+  background: var(--err);
+  border-color: var(--err);
+  color: #fff;
   filter: brightness(1.1);
 }
 
