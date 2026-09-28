@@ -43,20 +43,22 @@ type Item struct {
 
 // instance 单条隧道的运行态
 type instance struct {
-	mu        sync.Mutex
-	state     State
-	url       string
-	pid       int
-	startedAt int64
-	lastError string
-	logs      *logbuf.RingWriter
-	cmd       *exec.Cmd
-	proxy     *localProxy
-	stopping  bool
-	queued    bool               // 已排入自动启动队列，尚未轮到
-	pending   bool               // 后台启动任务进行中
-	requeue   bool               // 后台启动期间配置又变了，需再跑一轮
-	cancel    context.CancelFunc // 取消后台启动任务
+	mu         sync.Mutex
+	state      State
+	url        string
+	pid        int
+	startedAt  int64
+	lastError  string
+	logs       *logbuf.RingWriter
+	cmd        *exec.Cmd
+	proxy      *localProxy
+	stopping   bool
+	failReason string             // 已从 cloudflared 输出识别出的具体失败原因（如限流）
+	queued     bool               // 已排入自动启动队列，尚未轮到
+	pending    bool               // 后台启动任务进行中
+	requeue    bool               // 后台启动期间配置又变了，需再跑一轮
+	cancel     context.CancelFunc // 取消后台启动任务
+	exitCh     chan struct{}      // wait() 通知 Start() 进程已退出；每轮 Start 重建
 }
 
 // appendLog 追加一行日志；时间前缀在写入前拼好，环形缓冲内只存纯文本。

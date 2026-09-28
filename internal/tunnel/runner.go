@@ -45,7 +45,9 @@ func (m *Manager) Start(ctx context.Context, id string) error {
 	in.state = StateStarting
 	in.url = ""
 	in.lastError = ""
+	in.failReason = ""
 	in.stopping = false
+	in.exitCh = make(chan struct{})
 	in.mu.Unlock()
 
 	// 启动本地代理：cloudflared 指向代理，而非直接指向本地服务
@@ -83,6 +85,7 @@ func (m *Manager) Start(ctx context.Context, id string) error {
 	in.proxy = proxy
 	in.pid = cmd.Process.Pid
 	in.startedAt = time.Now().Unix()
+	exitCh := in.exitCh
 	in.mu.Unlock()
 	// 分隔历史日志，便于区分新一轮启动
 	in.appendLog("────────── 启动隧道 ──────────")
@@ -92,7 +95,7 @@ func (m *Manager) Start(ctx context.Context, id string) error {
 	urlCh := make(chan string, 1)
 	go scanOutput(stdout, in, urlCh)
 	go scanOutput(stderr, in, urlCh)
-	go m.wait(in, cmd)
+	go m.wait(in, cmd, exitCh)
 
 	select {
 	case url := <-urlCh:
@@ -108,11 +111,34 @@ func (m *Manager) Start(ctx context.Context, id string) error {
 		in.mu.Unlock()
 		in.appendLog("隧道地址: " + url)
 		return nil
+	case <-exitCh:
+		// 进程已退出（崩溃/被强杀），wait() 已把真实原因写进 lastError
+		in.mu.Lock()
+		reason := in.failReason
+		if reason == "" {
+			reason = in.lastError
+		}
+		if reason == "" {
+			reason = "cloudflared 意外退出"
+		}
+		in.mu.Unlock()
+		return errors.New(reason)
 	case <-time.After(startWaitURL):
-		err := errors.New("等待隧道地址超时，请查看日志")
+		// 已识别出具体原因（如限流）时直接用它，而不是笼统的"查看日志"；
+		// 若 wait() 已把状态置为 Error 并写入了友好文案，直接复用，避免重复打日志
+		in.mu.Lock()
+		reason := in.failReason
+		alreadyMarked := in.state == StateError && in.lastError != ""
+		in.mu.Unlock()
+		if reason == "" {
+			reason = "等待隧道地址超时，请查看日志"
+		}
+		err := errors.New(reason)
 		// 只停进程，不动 pending/requeue，避免把排队中的下一轮重启一起取消
 		m.stopProcess(id)
-		m.markError(in, err)
+		if !alreadyMarked {
+			m.markError(in, err)
+		}
 		return err
 	case <-ctx.Done():
 		m.stopProcess(id)
@@ -285,8 +311,8 @@ func (m *Manager) StopAll() {
 	}
 }
 
-// wait 回收子进程并更新状态
-func (m *Manager) wait(in *instance, cmd *exec.Cmd) {
+// wait 回收子进程并更新状态；exitCh 由调用方传入，避免读 in.exitCh 时与新一轮 Start 并发冲突
+func (m *Manager) wait(in *instance, cmd *exec.Cmd, exitCh chan struct{}) {
 	err := cmd.Wait()
 
 	in.mu.Lock()
@@ -306,12 +332,22 @@ func (m *Manager) wait(in *instance, cmd *exec.Cmd) {
 		in.lastError = ""
 	} else if err != nil {
 		in.state = StateError
-		in.lastError = "cloudflared 异常退出: " + err.Error()
+		if in.failReason != "" {
+			// 已从输出识别出具体原因（如限流），直接展示友好文案
+			in.lastError = in.failReason
+		} else {
+			in.lastError = "cloudflared 异常退出: " + err.Error()
+		}
 	} else {
 		in.state = StateStopped
 	}
 	msg := in.lastError
 	in.mu.Unlock()
+
+	// 通知 Start() 的 select：进程已退出，不要傻等超时
+	if exitCh != nil {
+		close(exitCh)
+	}
 
 	if proxy != nil {
 		proxy.stop()
@@ -346,6 +382,11 @@ func scanOutput(r io.Reader, in *instance, urlCh chan<- string) {
 			continue
 		}
 		in.appendLog(line)
+		if reason := classifyFailure(line); reason != "" {
+			in.mu.Lock()
+			in.failReason = reason
+			in.mu.Unlock()
+		}
 		if url := urlPattern.FindString(line); url != "" {
 			select {
 			case urlCh <- url:
@@ -357,4 +398,17 @@ func scanOutput(r io.Reader, in *instance, urlCh chan<- string) {
 	if err := sc.Err(); err != nil {
 		in.appendLog(fmt.Sprintf("scan output error: %v", err))
 	}
+}
+
+// classifyFailure 从 cloudflared 输出中识别明确的失败原因，返回友好提示；无法识别返回空串
+func classifyFailure(line string) string {
+	lower := strings.ToLower(line)
+	// 429 + 1015：trycloudflare 快速隧道限流
+	if strings.Contains(line, "429") && strings.Contains(line, "1015") {
+		return "因短时间建立隧道过多，已被 Cloudflare 限流（429），请稍后再试"
+	}
+	if strings.Contains(lower, "provisioning failed") && strings.Contains(line, "429") {
+		return "因短时间建立隧道过多，已被 Cloudflare 限流（429），请稍后再试"
+	}
+	return ""
 }

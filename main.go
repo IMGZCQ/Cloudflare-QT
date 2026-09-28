@@ -41,6 +41,7 @@ func main() {
 			Handler: api.APIHandler(mgr),
 		},
 		OnStartup: func(ctx context.Context) {
+			setWindowIcon(ctx)
 			go func() {
 				if st := mgr.BinaryStatus(); !st.Ready {
 					_ = mgr.DownloadBinary(ctx)

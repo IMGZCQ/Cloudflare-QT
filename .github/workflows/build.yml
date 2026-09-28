@@ -22,9 +22,9 @@ jobs:
     name: Build Frontend
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
@@ -41,7 +41,7 @@ jobs:
         run: npm run build
 
       - name: Upload dist
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: frontend-dist
           path: frontend/dist
@@ -69,14 +69,14 @@ jobs:
             goarch: amd64
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version: ${{ env.GO_VERSION }}
 
       - name: Download frontend dist
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: frontend-dist
           path: frontend/dist
@@ -90,12 +90,14 @@ jobs:
           BIN="cf-quicktunnel-${GOOS}-${GOARCH}"
           if [ "$GOOS" = "windows" ]; then
             BIN="cf-quicktunnel-server.exe"
+            go install github.com/akavel/rsrc@latest
+            rsrc -ico CloudflareQT256256.ico -o cmd/server/icon.syso
           fi
           go build -trimpath -ldflags "-s -w -X main.Version=${{ inputs.version }}" -o "$BIN" ./cmd/server
           echo "Built: $BIN"
 
       - name: Upload binary
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: server-${{ matrix.goos }}-${{ matrix.goarch }}
           path: cf-quicktunnel-*
@@ -106,14 +108,14 @@ jobs:
     runs-on: windows-latest
     needs: build-frontend
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version: ${{ env.GO_VERSION }}
 
       - name: Download frontend dist
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: frontend-dist
           path: frontend/dist
@@ -132,7 +134,7 @@ jobs:
           echo "Built: cf-quicktunnel-desktop.exe"
 
       - name: Upload binary
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: desktop-windows-amd64
           path: cf-quicktunnel-desktop.exe
@@ -147,7 +149,7 @@ jobs:
       contents: write
     steps:
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: artifacts
 
