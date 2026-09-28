@@ -81,6 +81,10 @@ jobs:
           name: frontend-dist
           path: frontend/dist
 
+      - name: Install rsrc
+        if: matrix.goos == 'windows'
+        run: go install github.com/akavel/rsrc@latest
+
       - name: Build
         env:
           GOOS: ${{ matrix.goos }}
@@ -90,7 +94,6 @@ jobs:
           BIN="cf-quicktunnel-${GOOS}-${GOARCH}"
           if [ "$GOOS" = "windows" ]; then
             BIN="cf-quicktunnel-server.exe"
-            go install github.com/akavel/rsrc@latest
             rsrc -ico CloudflareQT256256.ico -o cmd/server/icon.syso
           fi
           go build -trimpath -ldflags "-s -w -X main.Version=${{ inputs.version }}" -o "$BIN" ./cmd/server
