@@ -18,10 +18,18 @@ import (
 	"cfquicktunnel/internal/config"
 )
 
+// 隧道类型
+const (
+	TypeQuick = "quick" // 快捷隧道（临时隧道，cloudflared --url，随机 trycloudflare 域名）
+	TypeNamed = "named" // 命名隧道（Token 模式，ingress 由 Cloudflare 后台下发）
+)
+
 // Tunnel 一条隧道配置（临时隧道的公网地址每次启动都会变化，因此不持久化）
 type Tunnel struct {
 	ID            string `json:"id"`
 	Name          string `json:"name"`
+	Type          string `json:"type"`   // quick | named
+	Token         string `json:"token"`  // 命名隧道 Token（仅 named 使用）
 	Scheme        string `json:"scheme"` // http | https
 	Host          string `json:"host"`   // 本地地址，如 127.0.0.1
 	Port          int    `json:"port"`
@@ -32,7 +40,12 @@ type Tunnel struct {
 	CreatedAt     int64  `json:"createdAt"`
 }
 
-// Target 拼出 cloudflared --url 需要的本地地址
+// IsNamed 是否为命名隧道（Token 模式）
+func (t Tunnel) IsNamed() bool {
+	return t.Type == TypeNamed
+}
+
+// Target 拼出 cloudflared --url 需要的本地地址（仅快捷隧道有效）
 func (t Tunnel) Target() string {
 	return fmt.Sprintf("%s://%s:%d%s", t.Scheme, t.Host, t.Port, t.Path)
 }
@@ -50,17 +63,39 @@ func (t Tunnel) EdgeIPArg() string {
 // Normalize 校验并补全字段
 func (t *Tunnel) Normalize() error {
 	t.Name = strings.TrimSpace(t.Name)
+	t.Type = strings.TrimSpace(t.Type)
+	t.Token = strings.TrimSpace(t.Token)
 	t.Host = strings.TrimSpace(t.Host)
 	t.Scheme = strings.ToLower(strings.TrimSpace(t.Scheme))
 	t.Path = strings.TrimSpace(t.Path)
 	t.EdgeIPVersion = strings.TrimSpace(t.EdgeIPVersion)
 
+	if t.Type == "" {
+		t.Type = TypeQuick
+	}
+	if t.Type != TypeQuick && t.Type != TypeNamed {
+		return errors.New("隧道类型只支持快捷隧道或命名隧道")
+	}
 	if t.EdgeIPVersion == "" {
 		t.EdgeIPVersion = "4"
 	}
 	if t.EdgeIPVersion != "auto" && t.EdgeIPVersion != "4" && t.EdgeIPVersion != "6" {
 		return errors.New("IP 版本只支持 auto / 4 / 6")
 	}
+
+	// 命名隧道：ingress 由 Cloudflare 后台下发，本地不填目标地址，只需 Token
+	if t.Type == TypeNamed {
+		if t.Token == "" {
+			return errors.New("请输入命名隧道 Token")
+		}
+		if t.Name == "" {
+			t.Name = "命名隧道"
+		}
+		return nil
+	}
+
+	// 快捷隧道不使用 Token
+	t.Token = ""
 	if t.Scheme == "" {
 		t.Scheme = "http"
 	}
@@ -164,6 +199,10 @@ func Open() (*Store, error) {
 		t := &s.data.Tunnels[i]
 		if t.EdgeIPVersion == "" {
 			t.EdgeIPVersion = "4"
+			migrated = true
+		}
+		if t.Type == "" {
+			t.Type = TypeQuick
 			migrated = true
 		}
 	}

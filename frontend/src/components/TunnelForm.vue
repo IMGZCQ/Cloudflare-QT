@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { reactive, watch } from 'vue'
-import type { TunnelItem, TunnelPayload } from '../api'
+import type { TunnelItem, TunnelPayload, TunnelType } from '../api'
 
 const props = defineProps<{ editing: TunnelItem | null }>()
 const emit = defineEmits<{ submit: [TunnelPayload]; cancel: [] }>()
 
 const form = reactive({
   name: '',
+  type: 'quick' as TunnelType,
+  token: '',
   target: 'http://127.0.0.1:5666',
   edgeIpVersion: '4',
   autoStart: false,
@@ -16,6 +18,8 @@ watch(
   () => props.editing,
   (item) => {
     form.name = item?.name ?? ''
+    form.type = item?.type ?? 'quick'
+    form.token = item?.token ?? ''
     form.target = item ? `${item.scheme}://${item.host}:${item.port}${item.path}` : 'http://127.0.0.1:5666'
     form.edgeIpVersion = item?.edgeIpVersion || '4'
     form.autoStart = item?.autoStart ?? true
@@ -26,7 +30,9 @@ watch(
 function submit() {
   emit('submit', {
     name: form.name,
-    target: form.target,
+    type: form.type,
+    token: form.type === 'named' ? form.token : '',
+    target: form.type === 'quick' ? form.target : '',
     edgeIpVersion: form.edgeIpVersion,
     autoStart: form.autoStart,
   } as TunnelPayload)
@@ -42,6 +48,13 @@ function submit() {
         <input v-model="form.name" placeholder="（选填）" />
       </label>
       <label>
+        <span>隧道类型</span>
+        <select v-model="form.type" :disabled="!!props.editing" :title="props.editing ? '隧道类型创建后不可更改' : ''">
+          <option value="quick">快捷隧道</option>
+          <option value="named">命名隧道</option>
+        </select>
+      </label>
+      <label>
         <span>隧道连接方式</span>
         <select v-model="form.edgeIpVersion">
           <option value="auto">自动</option>
@@ -49,9 +62,13 @@ function submit() {
           <option value="6">IPv6</option>
         </select>
       </label>
-      <label>
+      <label v-if="form.type === 'quick'">
         <span>输入地址（协议://地址:端口/路径 等）</span>
         <input v-model="form.target" placeholder="http://127.0.0.1:8080" required />
+      </label>
+      <label v-else>
+        <span>Token</span>
+        <input v-model="form.token" placeholder="粘贴命名隧道 Token" required />
       </label>
     </div>
     <label class="check">
@@ -93,7 +110,7 @@ label + label {
 
 .grid {
   display: grid;
-  grid-template-columns: 1fr auto 2fr;
+  grid-template-columns: 1fr auto auto 2fr;
   gap: 12px;
   margin-top: 0;
 }
@@ -104,6 +121,11 @@ label + label {
 
 .grid select {
   min-width: 92px;
+}
+
+.grid select:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 @media (max-width: 720px) {

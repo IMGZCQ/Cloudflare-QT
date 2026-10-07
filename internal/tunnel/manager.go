@@ -193,14 +193,16 @@ func (m *Manager) Update(id string, cfg store.Tunnel) (Item, error) {
 	}
 	// 继承持久化的暂停偏好，防止编辑其他字段时被覆盖
 	cfg.Paused = old.Paused
+	// 隧道类型创建后不可变更，始终沿用旧值
+	cfg.Type = old.Type
 	if err := cfg.Normalize(); err != nil {
 		return Item{}, err
 	}
 
-	// 目标或边缘 IP 版本变化时，运行中/启动中/已暂停都需要重启（暂停偏好在重启后由 Start 恢复）
+	// 目标、边缘 IP 版本或 Token 变化时，运行中/启动中/已暂停都需要重启（暂停偏好在重启后由 Start 恢复）
 	state, _, _, _, _ := m.getInstance(id).snapshot()
 	live := state == StateRunning || state == StateStarting || state == StatePaused
-	restart := live && (cfg.Target() != old.Target() || cfg.EdgeIPArg() != old.EdgeIPArg())
+	restart := live && (cfg.Target() != old.Target() || cfg.EdgeIPArg() != old.EdgeIPArg() || cfg.Token != old.Token)
 
 	// 先落库：配置校验或写入失败时不会连带停掉正在运行的隧道
 	saved, err := m.st.Update(id, cfg)
@@ -249,7 +251,8 @@ func (m *Manager) Logs(id string, from uint64) ([]string, uint64, error) {
 
 // ensureFavicon 在后台抓取该隧道的 favicon；目标地址未变化时自动跳过
 func (m *Manager) ensureFavicon(cfg store.Tunnel) {
-	if m.fav == nil {
+	// 命名隧道没有本地目标地址，无法抓取 favicon
+	if m.fav == nil || cfg.IsNamed() {
 		return
 	}
 	m.fav.Ensure(cfg.ID, cfg.Target())
@@ -265,8 +268,13 @@ func (m *Manager) FaviconInfo(id string) (string, int64) {
 
 // Pause 暂停隧道：cloudflared 进程保持运行，本地代理切换为维护页面。
 func (m *Manager) Pause(id string) error {
-	if _, ok := m.st.Get(id); !ok {
+	cfg, ok := m.st.Get(id)
+	if !ok {
 		return store.ErrNotFound
+	}
+	// 命名隧道 ingress 由云端下发，本地无代理层，无法切换到维护页
+	if cfg.IsNamed() {
+		return ErrNotPausable
 	}
 	in := m.getInstance(id)
 	in.mu.Lock()
@@ -301,8 +309,13 @@ func (m *Manager) persistPaused(id string, paused bool) error {
 
 // Resume 恢复隧道：本地代理恢复转发到真实服务。
 func (m *Manager) Resume(id string) error {
-	if _, ok := m.st.Get(id); !ok {
+	cfg, ok := m.st.Get(id)
+	if !ok {
 		return store.ErrNotFound
+	}
+	// 命名隧道不支持暂停，也就无所谓恢复
+	if cfg.IsNamed() {
+		return ErrNotPausable
 	}
 	in := m.getInstance(id)
 	in.mu.Lock()

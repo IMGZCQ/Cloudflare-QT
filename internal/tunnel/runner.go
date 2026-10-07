@@ -3,10 +3,13 @@ package tunnel
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"os/exec"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -23,8 +26,17 @@ var ErrAlreadyRunning = errors.New("隧道已在运行")
 // ErrNotPaused 隧道未暂停
 var ErrNotPaused = errors.New("隧道未暂停")
 
-// startWaitURL 等待 cloudflared 输出临时域名的最长时间
+// ErrNotPausable 命名隧道不支持暂停
+var ErrNotPausable = errors.New("命名隧道不支持暂停，请使用启动/停止")
+
+// startWaitURL 等待 cloudflared 就绪（临时域名或连接注册成功）的最长时间
 const startWaitURL = 30 * time.Second
+
+// registeredPattern 匹配命名隧道与 Cloudflare 边缘连接建立的日志（命名隧道没有临时域名输出）
+var registeredPattern = regexp.MustCompile(`Registered tunnel connection`)
+
+// configPattern 匹配命名隧道云端下发配置的日志行，捕获其中转义后的 JSON 配置（含 ingress 主机名）
+var configPattern = regexp.MustCompile(`Updated to new configuration config="(.*)"`)
 
 // Start 启动临时隧道：cloudflared tunnel --protocol http2 --url <target>
 func (m *Manager) Start(ctx context.Context, id string) error {
@@ -50,16 +62,25 @@ func (m *Manager) Start(ctx context.Context, id string) error {
 	in.exitCh = make(chan struct{})
 	in.mu.Unlock()
 
-	// 启动本地代理：cloudflared 指向代理，而非直接指向本地服务
-	// 这样可以随时暂停/恢复，而不丢失域名
-	proxy := newLocalProxy(cfg.Target())
-	proxyAddr, err := proxy.start()
-	if err != nil {
-		m.markError(in, err)
-		return err
+	// 快捷隧道在 cloudflared 与本地服务之间插入本地代理，用于随时暂停/恢复且不丢失域名；
+	// 命名隧道（Token 模式）的 ingress 由 Cloudflare 云端下发，本地无法插入代理，故不支持暂停。
+	named := cfg.IsNamed()
+	baseArgs := []string{"tunnel", "--no-autoupdate", "--protocol", "auto", "--edge-ip-version", cfg.EdgeIPArg(), "--retries", "20"}
+
+	var proxy *localProxy
+	var args []string
+	if named {
+		args = append(baseArgs, "run", "--token", cfg.Token)
+	} else {
+		proxy = newLocalProxy(cfg.Target())
+		proxyAddr, err := proxy.start()
+		if err != nil {
+			m.markError(in, err)
+			return err
+		}
+		args = append(baseArgs, "--url", proxyAddr)
 	}
 
-	args := []string{"tunnel", "--no-autoupdate", "--protocol", "auto", "--edge-ip-version", cfg.EdgeIPArg(), "--retries", "20", "--url", proxyAddr}
 	cmd := exec.Command(config.CloudflaredPath(), args...)
 	hideWindow(cmd)
 	stdout, err := cmd.StdoutPipe()
@@ -89,19 +110,23 @@ func (m *Manager) Start(ctx context.Context, id string) error {
 	in.mu.Unlock()
 	// 分隔历史日志，便于区分新一轮启动
 	in.appendLog("────────── 启动隧道 ──────────")
-	in.appendLog("启动 cloudflared，目标 " + cfg.Target())
+	if named {
+		in.appendLog("启动 cloudflared 命名隧道（Token 模式）")
+	} else {
+		in.appendLog("启动 cloudflared，目标 " + cfg.Target())
+	}
 
-	// cloudflared 把隧道地址写到 stderr，两路都扫描以适配版本差异
-	urlCh := make(chan string, 1)
-	go scanOutput(stdout, in, urlCh)
-	go scanOutput(stderr, in, urlCh)
+	// 快捷隧道等待临时域名，命名隧道等待连接注册成功；两路都扫描以适配版本差异
+	readyCh := make(chan string, 1)
+	go scanOutput(stdout, in, readyCh, named)
+	go scanOutput(stderr, in, readyCh, named)
 	go m.wait(in, cmd, exitCh)
 
 	select {
-	case url := <-urlCh:
+	case url := <-readyCh:
 		in.mu.Lock()
 		in.url = url
-		if cfg.Paused {
+		if !named && cfg.Paused {
 			// 恢复暂停偏好：域名照常分配，访客看到维护页面
 			proxy.setPaused(true)
 			in.state = StatePaused
@@ -109,7 +134,11 @@ func (m *Manager) Start(ctx context.Context, id string) error {
 			in.state = StateRunning
 		}
 		in.mu.Unlock()
-		in.appendLog("隧道地址: " + url)
+		if url != "" {
+			in.appendLog("隧道地址: " + url)
+		} else {
+			in.appendLog("命名隧道连接已建立")
+		}
 		return nil
 	case <-exitCh:
 		// 进程已退出（崩溃/被强杀），wait() 已把真实原因写进 lastError
@@ -131,7 +160,11 @@ func (m *Manager) Start(ctx context.Context, id string) error {
 		alreadyMarked := in.state == StateError && in.lastError != ""
 		in.mu.Unlock()
 		if reason == "" {
-			reason = "等待隧道地址超时，请查看日志"
+			if named {
+				reason = "等待命名隧道连接超时，请检查 Token 是否正确"
+			} else {
+				reason = "等待隧道地址超时，请查看日志"
+			}
 		}
 		err := errors.New(reason)
 		// 只停进程，不动 pending/requeue，避免把排队中的下一轮重启一起取消
@@ -372,8 +405,9 @@ func (m *Manager) markError(in *instance, err error) {
 	in.appendLog("错误: " + err.Error())
 }
 
-// scanOutput 逐行读取 cloudflared 输出，记录日志并提取隧道地址
-func scanOutput(r io.Reader, in *instance, urlCh chan<- string) {
+// scanOutput 逐行读取 cloudflared 输出，记录日志并提取隧道就绪信号。
+// 快捷隧道就绪信号为临时域名；命名隧道无域名输出，就绪信号为空串（以连接注册成功为准）。
+func scanOutput(r io.Reader, in *instance, readyCh chan<- string, named bool) {
 	sc := bufio.NewScanner(r)
 	sc.Buffer(make([]byte, 0, 64*1024), 512*1024)
 	for sc.Scan() {
@@ -389,8 +423,35 @@ func scanOutput(r io.Reader, in *instance, urlCh chan<- string) {
 		}
 		if url := urlPattern.FindString(line); url != "" {
 			select {
-			case urlCh <- url:
+			case readyCh <- url:
 			default:
+			}
+		} else if named {
+			if host := parseHostname(line); host != "" {
+				// 云端下发配置里带公网主机名，据此自动获知命名隧道的访问地址
+				u := "https://" + host
+				in.mu.Lock()
+				logURL := false
+				if in.state == StateStarting || in.state == StateRunning {
+					if in.url != u {
+						in.url = u
+						// 启动阶段由 Start 统一打印地址，避免重复
+						logURL = in.state == StateRunning
+					}
+				}
+				in.mu.Unlock()
+				if logURL {
+					in.appendLog("隧道地址: " + u)
+				}
+				select {
+				case readyCh <- u:
+				default:
+				}
+			} else if registeredPattern.MatchString(line) {
+				select {
+				case readyCh <- "":
+				default:
+				}
 			}
 		}
 	}
@@ -398,6 +459,36 @@ func scanOutput(r io.Reader, in *instance, urlCh chan<- string) {
 	if err := sc.Err(); err != nil {
 		in.appendLog(fmt.Sprintf("scan output error: %v", err))
 	}
+}
+
+// ingressConfig 云端下发的 ingress 配置（只关心公网主机名）
+type ingressConfig struct {
+	Ingress []struct {
+		Hostname string `json:"hostname"`
+	} `json:"ingress"`
+}
+
+// parseHostname 从“Updated to new configuration”日志行中提取第一个公网主机名；无法解析返回空串。
+// 日志里的 config 是转义后的 JSON 字符串（形如 config="{\"ingress\":[...]}"），需先反转义再解析。
+func parseHostname(line string) string {
+	m := configPattern.FindStringSubmatch(line)
+	if m == nil {
+		return ""
+	}
+	raw, err := strconv.Unquote(`"` + m[1] + `"`)
+	if err != nil {
+		return ""
+	}
+	var cfg ingressConfig
+	if err := json.Unmarshal([]byte(raw), &cfg); err != nil {
+		return ""
+	}
+	for _, rule := range cfg.Ingress {
+		if rule.Hostname != "" {
+			return rule.Hostname
+		}
+	}
+	return ""
 }
 
 // classifyFailure 从 cloudflared 输出中识别明确的失败原因，返回友好提示；无法识别返回空串

@@ -18,9 +18,17 @@ const emit = defineEmits<{
   logs: []
 }>()
 
-const target = computed(
-  () => `${props.item.scheme}://${props.item.host}:${props.item.port}${props.item.path || ''}`,
-)
+const isNamed = computed(() => props.item.type === 'named')
+
+// 命名隧道没有本地目标地址，仅展示 PID
+const targetText = computed(() => {
+  const parts: string[] = []
+  if (!isNamed.value) {
+    parts.push(`${props.item.scheme}://${props.item.host}:${props.item.port}${props.item.path || ''}`)
+  }
+  if (props.item.pid) parts.push(`PID ${props.item.pid}`)
+  return parts.join(' · ')
+})
 
 const running = computed(
   () =>
@@ -58,12 +66,12 @@ const { confirming, doConfirm } = useConfirm(
         v-if="item.state === 'stopped' || item.state === 'error'"
         class="primary"
         :disabled="busy"
-        title="启动隧道（会分配新的公网地址）"
+        :title="isNamed ? '启动命名隧道' : '启动隧道（会分配新的公网地址）'"
         aria-label="启动"
         @click="emit('start')"
       ><Icon name="play" /></button>
       <button
-        v-else-if="item.state === 'running'"
+        v-else-if="item.state === 'running' && !isNamed"
         :disabled="busy"
         title="暂停后公网地址保持不变，访客将看到维护页面，可随时恢复"
         aria-label="暂停"
@@ -77,13 +85,11 @@ const { confirming, doConfirm } = useConfirm(
         aria-label="恢复"
         @click="emit('resume')"
       ><Icon name="resume" /></button>
-      <button v-else disabled aria-label="启动中"><Icon name="play" /></button>
+      <button v-else-if="item.state !== 'running'" disabled aria-label="启动中"><Icon name="play" /></button>
     </div>
 
-    <div class="target-row">
-      <div class="target-text">
-        {{ target }}<template v-if="item.pid"> · PID {{ item.pid }}</template>
-      </div>
+    <div v-if="targetText" class="target-row">
+      <div class="target-text">{{ targetText }}</div>
     </div>
 
     <div v-if="item.url" class="url-card">
@@ -117,7 +123,7 @@ const { confirming, doConfirm } = useConfirm(
       <button
         v-if="running"
         :disabled="busy"
-        title="停止后公网地址失效，再次启动会分配新的公网地址"
+        :title="isNamed ? '停止命名隧道' : '停止后公网地址失效，再次启动会分配新的公网地址'"
         aria-label="停止"
         @click="confirming = 'stop'"
       ><Icon name="stop" /></button>

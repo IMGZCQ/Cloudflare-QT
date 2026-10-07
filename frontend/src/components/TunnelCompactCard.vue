@@ -14,6 +14,8 @@ const emit = defineEmits<{
   resume: []
 }>()
 
+const isNamed = computed(() => props.item.type === 'named')
+
 const running = computed(
   () =>
     props.item.state === 'running' ||
@@ -67,12 +69,12 @@ function onCardClick() {
         v-if="item.state === 'stopped' || item.state === 'error'"
         class="primary"
         :disabled="busy"
-        title="启动隧道（会分配新的公网地址）"
+        :title="isNamed ? '启动命名隧道' : '启动隧道（会分配新的公网地址）'"
         aria-label="启动"
         @click.stop="emit('start')"
       ><Icon name="play" /></button>
       <button
-        v-else-if="item.state === 'running'"
+        v-else-if="item.state === 'running' && !isNamed"
         :disabled="busy"
         title="暂停后公网地址保持不变，可随时恢复"
         aria-label="暂停"
@@ -86,12 +88,12 @@ function onCardClick() {
         aria-label="恢复"
         @click.stop="emit('resume')"
       ><Icon name="resume" /></button>
-      <button v-else disabled aria-label="启动中"><Icon name="play" /></button>
+      <button v-else-if="item.state !== 'running'" disabled aria-label="启动中"><Icon name="play" /></button>
 
       <button
         v-if="running"
         :disabled="busy"
-        title="停止后公网地址失效，再次启动会分配新的公网地址"
+        :title="isNamed ? '停止命名隧道' : '停止后公网地址失效，再次启动会分配新的公网地址'"
         aria-label="停止"
         @click.stop="confirming = 'stop'"
       ><Icon name="stop" /></button>

@@ -79,6 +79,10 @@ func (p *localProxy) start() (string, error) {
 }
 
 func (p *localProxy) stop() {
+	// 命名隧道没有本地代理，允许对空指针调用
+	if p == nil {
+		return
+	}
 	if p.server != nil {
 		p.server.Close()
 		p.server = nil

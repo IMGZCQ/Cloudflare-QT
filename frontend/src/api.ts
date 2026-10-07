@@ -1,8 +1,13 @@
 export type TunnelState = 'stopped' | 'starting' | 'running' | 'paused' | 'error'
 
+// 隧道类型：quick 快捷隧道（临时隧道，随机域名）；named 命名隧道（Token 模式）
+export type TunnelType = 'quick' | 'named'
+
 export interface TunnelItem {
   id: string
   name: string
+  type: TunnelType
+  token: string
   scheme: string
   host: string
   port: number
@@ -30,6 +35,8 @@ export interface BinaryStatus {
 
 export interface TunnelPayload {
   name: string
+  type: TunnelType
+  token?: string
   scheme: string
   host: string
   port: number

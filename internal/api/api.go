@@ -263,7 +263,7 @@ func statusOf(err error) int {
 	switch {
 	case errors.Is(err, store.ErrNotFound):
 		return http.StatusNotFound
-	case errors.Is(err, tunnel.ErrAlreadyRunning), errors.Is(err, tunnel.ErrNotRunning), errors.Is(err, tunnel.ErrNotPaused):
+	case errors.Is(err, tunnel.ErrAlreadyRunning), errors.Is(err, tunnel.ErrNotRunning), errors.Is(err, tunnel.ErrNotPaused), errors.Is(err, tunnel.ErrNotPausable):
 		return http.StatusConflict
 	default:
 		return http.StatusInternalServerError
