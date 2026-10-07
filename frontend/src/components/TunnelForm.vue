@@ -37,6 +37,28 @@ function submit() {
     autoStart: form.autoStart,
   } as TunnelPayload)
 }
+
+// 兼容用户整段粘贴安装/运行命令：从 "cloudflared.exe service install <token>" 中提取 Token
+function extractToken(raw: string): string {
+  const s = raw.trim()
+  if (!s) return ''
+  const fields = s.split(/\s+/)
+  for (let i = fields.length - 1; i >= 0; i--) {
+    const f = fields[i].replace(/^["']+|["']+$/g, '')
+    if (f.startsWith('eyJ') && f.length > 20) return f
+  }
+  return fields[fields.length - 1].replace(/^["']+|["']+$/g, '')
+}
+
+function onTokenPaste(e: ClipboardEvent) {
+  const text = e.clipboardData?.getData('text') ?? ''
+  const extracted = extractToken(text)
+  // 仅当粘贴的是整条命令（提取结果与原文本不同）时接管，避免影响正常粘贴
+  if (extracted && extracted !== text.trim()) {
+    e.preventDefault()
+    form.token = extracted
+  }
+}
 </script>
 
 <template>
@@ -68,7 +90,13 @@ function submit() {
       </label>
       <label v-else>
         <span>Token</span>
-        <input v-model="form.token" placeholder="粘贴命名隧道 Token" required />
+        <input
+          v-model="form.token"
+          placeholder="粘贴命名隧道 Token，或直接粘贴 cloudflared 安装命令"
+          required
+          @paste="onTokenPaste"
+          @blur="form.token = extractToken(form.token)"
+        />
       </label>
     </div>
     <label class="check">

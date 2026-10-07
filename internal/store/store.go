@@ -60,6 +60,22 @@ func (t Tunnel) EdgeIPArg() string {
 	}
 }
 
+// normalizeToken 兼容用户整段粘贴安装/运行命令（如 "cloudflared.exe service install <token>"），
+// 自动提取其中的 Token。Token 是命令的最后一个参数，且以 eyJ 开头（base64 编码的 JSON）。
+func normalizeToken(raw string) string {
+	fields := strings.Fields(raw)
+	if len(fields) == 0 {
+		return ""
+	}
+	// 优先取形如 Token 的参数（以 eyJ 开头且足够长），否则退回最后一个参数
+	for i := len(fields) - 1; i >= 0; i-- {
+		if f := strings.Trim(fields[i], `"'`); strings.HasPrefix(f, "eyJ") && len(f) > 20 {
+			return f
+		}
+	}
+	return strings.Trim(fields[len(fields)-1], `"'`)
+}
+
 // Normalize 校验并补全字段
 func (t *Tunnel) Normalize() error {
 	t.Name = strings.TrimSpace(t.Name)
@@ -85,6 +101,8 @@ func (t *Tunnel) Normalize() error {
 
 	// 命名隧道：ingress 由 Cloudflare 后台下发，本地不填目标地址，只需 Token
 	if t.Type == TypeNamed {
+		// 兼容用户整段粘贴安装命令，自动提取其中的 Token
+		t.Token = normalizeToken(t.Token)
 		if t.Token == "" {
 			return errors.New("请输入命名隧道 Token")
 		}

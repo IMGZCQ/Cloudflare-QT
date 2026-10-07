@@ -27,6 +27,7 @@ const info = [
         <h3>使用说明</h3>
         <ul>
           <li>新增隧道 > 填写地址 > 保存启动 > Enjoy it！</li>
+          <li>命名隧道 Token 获取：Zero Trust > 网络 > 隧道 > 进入目标隧道 > 添加连接器 > 复制命令</li>
           <li>
             隧道故障错误码速查表：
             <a class="repo-link" href="https://github.com/IMGZCQ/Cloudflare-QT#%E9%9A%A7%E9%81%93%E6%95%85%E9%9A%9C%E9%80%9F%E6%9F%A5%E8%A1%A8" target="_blank" rel="noreferrer">查看</a>
