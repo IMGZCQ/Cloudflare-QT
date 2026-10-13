@@ -123,4 +123,9 @@ export const api = {
     ),
 
   downloadBinary: () => request<BinaryStatus>('/api/binary/download', { method: 'POST' }),
+
+  latestVersion: () => request<{ latest: string }>('/api/binary/latest'),
+
+  updateBinary: () =>
+    request<{ updated: boolean; binary: BinaryStatus }>('/api/binary/update', { method: 'POST' }),
 }

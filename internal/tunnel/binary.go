@@ -3,6 +3,7 @@ package tunnel
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net"
@@ -42,6 +43,12 @@ const minBinarySize = 5 << 20
 // srcTimeout 单个下载源的整体超时
 const srcTimeout = 10 * time.Minute
 
+// latestVersionURL GitHub releases latest 接口，用于获取最新版本号
+const latestVersionURL = "https://api.github.com/repos/cloudflare/cloudflared/releases/latest"
+
+// versionCacheTTL 最新版本号缓存时长，避免频繁请求 GitHub API
+const versionCacheTTL = 1 * time.Hour
+
 // downloadClient 缩短连接与响应头超时，让失效的源尽快失败以便切换下一个
 var downloadClient = &http.Client{
 	Transport: &http.Transport{
@@ -69,6 +76,11 @@ type binary struct {
 	message     string
 	version     string
 	callbacks   []func() // 下载完成后的回调（由 Manager 注册，用于重试待启动隧道）
+
+	latest    string    // 缓存的最新版本号
+	latestAt  time.Time // 缓存时间
+	latestErr error     // 上次查询失败的错误
+	latestMu  sync.Mutex
 }
 
 // onReady 注册下载完成回调，由 Manager 在初始化时调用
@@ -138,8 +150,22 @@ func (b *binary) Ensure(ctx context.Context) error {
 	return b.Download(ctx)
 }
 
-// Download 下载 cloudflared 到项目 bin 目录
+// Download 下载 cloudflared 并立即安装（用于首次就绪，此时无隧道运行）
 func (b *binary) Download(ctx context.Context) error {
+	if err := b.DownloadToTemp(ctx); err != nil {
+		return err
+	}
+	if err := b.Install(); err != nil {
+		return err
+	}
+	// 下载成功：通知 Manager 重试因等待二进制而失败的隧道
+	b.notifyReady()
+	return nil
+}
+
+// DownloadToTemp 下载最新版本到临时文件，不替换正在使用的可执行文件。
+// 更新流程用它在不停隧道的情况下先完成下载。
+func (b *binary) DownloadToTemp(ctx context.Context) error {
 	asset, err := assetName()
 	if err != nil {
 		return err
@@ -164,15 +190,33 @@ func (b *binary) Download(ctx context.Context) error {
 	} else {
 		b.progress = 100
 		// message 已由 doDownload 写入命中的下载源
-		b.version = probeVersion(config.CloudflaredPath())
 	}
 	b.mu.Unlock()
-
-	if err == nil {
-		// 下载成功：通知 Manager 重试因等待二进制而失败的隧道
-		b.notifyReady()
-	}
 	return err
+}
+
+// Install 用已下载的临时文件替换 cloudflared 可执行文件。
+// 调用前必须确保没有 cloudflared 进程在运行（Windows 下无法覆盖正在运行的文件）。
+func (b *binary) Install() error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	dst := config.CloudflaredPath()
+	tmp := dst + ".download"
+	if _, err := os.Stat(tmp); err != nil {
+		return fmt.Errorf("没有待安装的更新文件")
+	}
+	// Windows 下无法覆盖正在运行的文件，先删除旧文件
+	os.Remove(dst)
+	if err := os.Rename(tmp, filepath.Clean(dst)); err != nil {
+		os.Remove(tmp)
+		return err
+	}
+	if err := os.Chmod(dst, 0o755); err != nil {
+		return err
+	}
+	b.version = probeVersion(dst)
+	return nil
 }
 
 // mirrors 返回按优先级排列的下载源前缀
@@ -241,7 +285,8 @@ func (b *binary) doDownload(ctx context.Context, asset string) error {
 	return fmt.Errorf("所有下载源均失败，最后一个错误 %w", lastErr)
 }
 
-// fetch 从单个地址下载并落到 cloudflared 目标路径
+// fetch 从单个地址下载到临时文件（dst.download），不替换正在使用的可执行文件；
+// 替换动作由 Install 统一执行，便于更新流程先下载再停机替换
 func (b *binary) fetch(ctx context.Context, url string) error {
 	ctx, cancel := context.WithTimeout(ctx, srcTimeout)
 	defer cancel()
@@ -286,14 +331,7 @@ func (b *binary) fetch(ctx context.Context, url string) error {
 		os.Remove(tmp)
 		return err
 	}
-
-	// Windows 下无法覆盖正在运行的文件，先尝试删除旧文件
-	os.Remove(dst)
-	if err := os.Rename(tmp, filepath.Clean(dst)); err != nil {
-		os.Remove(tmp)
-		return err
-	}
-	return os.Chmod(dst, 0o755)
+	return nil
 }
 
 type progressReader struct {
@@ -331,4 +369,74 @@ func probeVersion(path string) string {
 		return ""
 	}
 	return strings.TrimSpace(strings.SplitN(string(out), "\n", 2)[0])
+}
+
+// LatestVersion 查询 GitHub 上 cloudflared 的最新 release 版本号，带 1 小时缓存。
+// 返回形如 "2026.8.3" 的纯版本号；查询失败时返回错误。
+func (b *binary) LatestVersion(ctx context.Context) (string, error) {
+	b.latestMu.Lock()
+	if b.latest != "" && time.Since(b.latestAt) < versionCacheTTL {
+		v, err := b.latest, b.latestErr
+		b.latestMu.Unlock()
+		return v, err
+	}
+	b.latestMu.Unlock()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, latestVersionURL, nil)
+	if err != nil {
+		return "", err
+	}
+	// 部分环境下未设置 UA 会被 GitHub API 拒绝
+	req.Header.Set("User-Agent", "cf-quicktunnel")
+	resp, err := downloadClient.Do(req)
+	if err != nil {
+		b.latestMu.Lock()
+		b.latestErr = err
+		b.latest = ""
+		b.latestAt = time.Now()
+		b.latestMu.Unlock()
+		return "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		err = fmt.Errorf("GitHub API 返回 HTTP %s", resp.Status)
+		b.latestMu.Lock()
+		b.latestErr = err
+		b.latest = ""
+		b.latestAt = time.Now()
+		b.latestMu.Unlock()
+		return "", err
+	}
+	var data struct {
+		TagName string `json:"tag_name"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
+		b.latestMu.Lock()
+		b.latestErr = err
+		b.latest = ""
+		b.latestAt = time.Now()
+		b.latestMu.Unlock()
+		return "", err
+	}
+	// tag_name 可能带 v 前缀，统一去掉
+	tag := strings.TrimPrefix(data.TagName, "v")
+	b.latestMu.Lock()
+	b.latest = tag
+	b.latestErr = nil
+	b.latestAt = time.Now()
+	b.latestMu.Unlock()
+	return tag, nil
+}
+
+// parseVersionNumber 从 "cloudflared version 2026.8.3 (built ...)" 中提取纯版本号 "2026.8.3"
+func parseVersionNumber(full string) string {
+	// 形如 "cloudflared version 2026.8.3 (built 2026-08-31-10:04 UTC)"
+	full = strings.TrimSpace(full)
+	if i := strings.Index(full, "version "); i >= 0 {
+		full = full[i+len("version "):]
+	}
+	if i := strings.Index(full, " "); i >= 0 {
+		full = full[:i]
+	}
+	return strings.TrimSpace(full)
 }

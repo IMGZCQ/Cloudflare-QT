@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"cfquicktunnel/internal/config"
@@ -29,6 +30,9 @@ var ErrNotPaused = errors.New("隧道未暂停")
 // ErrNotPausable 命名隧道不支持暂停
 var ErrNotPausable = errors.New("命名隧道不支持暂停，请使用启动/停止")
 
+// ErrUpdating 内核更新中，禁止启动隧道
+var ErrUpdating = errors.New("内核更新中，请稍候再试")
+
 // startWaitURL 等待 cloudflared 就绪（临时域名或连接注册成功）的最长时间
 const startWaitURL = 30 * time.Second
 
@@ -40,6 +44,10 @@ var configPattern = regexp.MustCompile(`Updated to new configuration config="(.*
 
 // Start 启动临时隧道：cloudflared tunnel --protocol http2 --url <target>
 func (m *Manager) Start(ctx context.Context, id string) error {
+	// 内核更新期间禁止启动隧道，避免旧进程占用可执行文件导致更新下载失败
+	if atomic.LoadInt32(&m.updating) == 1 {
+		return ErrUpdating
+	}
 	cfg, ok := m.st.Get(id)
 	if !ok {
 		return store.ErrNotFound

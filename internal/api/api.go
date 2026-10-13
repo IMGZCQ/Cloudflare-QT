@@ -51,7 +51,9 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/tunnels/{id}/logs", s.handleLogs)
 	s.mux.HandleFunc("GET /api/tunnels/{id}/favicon", s.handleFavicon)
 	s.mux.HandleFunc("GET /api/binary", s.handleBinary)
+	s.mux.HandleFunc("GET /api/binary/latest", s.handleBinaryLatest)
 	s.mux.HandleFunc("POST /api/binary/download", s.handleBinaryDownload)
+	s.mux.HandleFunc("POST /api/binary/update", s.handleBinaryUpdate)
 }
 
 // ServeHTTP 处理统一网关前缀后分发请求
@@ -259,11 +261,29 @@ func (s *Server) handleBinaryDownload(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, s.mgr.BinaryStatus())
 }
 
+func (s *Server) handleBinaryLatest(w http.ResponseWriter, r *http.Request) {
+	latest, err := s.mgr.LatestVersion(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"latest": latest})
+}
+
+func (s *Server) handleBinaryUpdate(w http.ResponseWriter, r *http.Request) {
+	updated, err := s.mgr.UpdateBinary(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"updated": updated, "binary": s.mgr.BinaryStatus()})
+}
+
 func statusOf(err error) int {
 	switch {
 	case errors.Is(err, store.ErrNotFound):
 		return http.StatusNotFound
-	case errors.Is(err, tunnel.ErrAlreadyRunning), errors.Is(err, tunnel.ErrNotRunning), errors.Is(err, tunnel.ErrNotPaused), errors.Is(err, tunnel.ErrNotPausable):
+	case errors.Is(err, tunnel.ErrAlreadyRunning), errors.Is(err, tunnel.ErrNotRunning), errors.Is(err, tunnel.ErrNotPaused), errors.Is(err, tunnel.ErrNotPausable), errors.Is(err, tunnel.ErrUpdating):
 		return http.StatusConflict
 	default:
 		return http.StatusInternalServerError

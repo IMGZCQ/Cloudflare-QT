@@ -21,6 +21,11 @@ const editing = ref<TunnelItem | null>(null)
 const logId = ref('')
 const aboutOpen = ref(false)
 
+// 内核更新弹窗状态
+const updateOpen = ref(false)
+const latestVersion = ref('')
+const updateChecking = ref(false)
+
 // 视图模式：list（列表） / card（卡片） / compact（极简），持久化到 localStorage
 type ViewMode = 'list' | 'card' | 'compact'
 const VIEW_KEY = 'cfqt.viewMode'
@@ -199,6 +204,9 @@ const logItem = computed<TunnelItem | null>(
   () => items.value.find((i) => i.id === logId.value) ?? null,
 )
 
+// 内核更新中：禁用所有隧道操作，避免启动旧内核占用文件导致更新失败
+const updating = computed(() => !!busy.value['binary'])
+
 // 卡片模式下 LogPanel 头部被 ModalShell 隐藏，通过 ref 拿它的创建于/复制状态放到弹窗头部
 type LogPanelExpose = {
   copied: boolean
@@ -215,6 +223,37 @@ async function download() {
   await withBusy('binary', async () => {
     binary.value = await api.downloadBinary()
     notify('cloudflared 已就绪')
+  })
+}
+
+// 打开内核更新确认弹窗：先拉取最新版本号
+async function openUpdate() {
+  if (updateChecking.value) return
+  updateChecking.value = true
+  try {
+    const res = await api.latestVersion()
+    latestVersion.value = res.latest
+    updateOpen.value = true
+  } catch (e) {
+    notify((e as Error).message || '获取最新版本失败', 'err')
+  } finally {
+    updateChecking.value = false
+  }
+}
+
+// 确认更新内核
+async function confirmUpdate() {
+  updateOpen.value = false
+  await withBusy('binary', async () => {
+    // 更新期间二进制状态条会显示 "正在更新 Cloudflared 内核…" 及下载进度
+    const res = await api.updateBinary()
+    binary.value = res.binary
+    if (res.updated) {
+      notify('内核更新完成，隧道已重启')
+    } else {
+      notify('当前已是最新版本，无需更新')
+    }
+    await refresh()
   })
 }
 
@@ -258,21 +297,29 @@ onUnmounted(() => {
           <Icon :name="theme === 'dark' ? 'sun' : 'moon'" />
         </button>
         <button @click="aboutOpen = true">关于</button>
-        <button class="primary" :disabled="busy['new']" @click="openCreate">新增隧道</button>
+        <button class="primary" :disabled="busy['new'] || updating" @click="openCreate">新增隧道</button>
       </div>
     </header>
 
-    <div v-if="message || binary" class="binary" :class="{ warn: !message && binary && !binary.ready, err: message && messageKind === 'err', hint: message && messageKind === 'hint' }">
-      <span v-if="message">{{ message }}</span>
+    <div v-if="message || binary" class="binary" :class="{ warn: !message && binary && !binary.ready, err: message && messageKind === 'err', hint: (message && messageKind === 'hint') || updating }">
+      <span v-if="message && !updating">{{ message }}</span>
       <template v-else-if="binary">
-        <span v-if="binary.ready">
+        <span v-if="updating">
+          正在更新 Cloudflared 内核…<template v-if="binary.downloading"> · {{ binary.message || '下载中' }} · {{ binary.progress }}%</template>
+        </span>
+        <span v-else-if="binary.ready">
+          <button
+            class="update-kernel"
+            :disabled="busy['binary'] || updateChecking"
+            @click="openUpdate"
+          >更新内核</button>
           cloudflared 就绪<template v-if="binary.version"> · {{ binary.version }}</template>
         </span>
         <span v-else-if="binary.downloading">
           {{ binary.message || '正在下载 Cloudflared' }} · {{ binary.progress }}%
         </span>
         <span v-else>未找到 Cloudflared：{{ binary.message || binary.path }}</span>
-        <button v-if="!binary.ready" :disabled="binary.downloading || busy['binary']" @click="download">
+        <button v-if="!binary.ready && !updating" :disabled="binary.downloading || busy['binary']" @click="download">
           立即下载
         </button>
       </template>
@@ -299,7 +346,7 @@ onUnmounted(() => {
         <TunnelRow
           v-else
           :item="item"
-          :busy="!!busy[item.id]"
+          :busy="!!busy[item.id] || updating"
           @start="start(item)"
           @stop="stop(item)"
           @pause="pause(item)"
@@ -318,7 +365,7 @@ onUnmounted(() => {
         v-for="item in items"
         :key="item.id"
         :item="item"
-        :busy="!!busy[item.id]"
+        :busy="!!busy[item.id] || updating"
         @start="start(item)"
         @stop="stop(item)"
         @pause="pause(item)"
@@ -335,7 +382,7 @@ onUnmounted(() => {
         v-for="item in items"
         :key="item.id"
         :item="item"
-        :busy="!!busy[item.id]"
+        :busy="!!busy[item.id] || updating"
         @start="start(item)"
         @stop="stop(item)"
         @pause="pause(item)"
@@ -370,6 +417,30 @@ onUnmounted(() => {
     </ModalShell>
 
     <AboutDialog v-if="aboutOpen" @close="aboutOpen = false" />
+
+    <!-- 内核更新确认弹窗 -->
+    <ModalShell v-if="updateOpen" title="更新 Cloudflared 内核" @close="updateOpen = false">
+      <div class="update-dialog">
+        <p class="update-question">
+          是否更新 Cloudflared 隧道内核到
+          <strong class="update-version">{{ latestVersion }}</strong>
+          版本？
+        </p>
+        <div class="update-warning">
+          <strong>⚠ 注意事项</strong>
+          <ul>
+            <li>更新后，全部隧道将会重启。</li>
+            <li>快捷隧道分配的域名地址将会发生变化。</li>
+          </ul>
+        </div>
+        <div class="update-actions">
+          <button class="primary" :disabled="busy['binary']" @click="confirmUpdate">
+            {{ busy['binary'] ? '更新中…' : '确定' }}
+          </button>
+          <button :disabled="busy['binary']" @click="updateOpen = false">取消</button>
+        </div>
+      </div>
+    </ModalShell>
   </div>
 </template>
 
@@ -482,6 +553,62 @@ h1 {
   color: var(--accent);
   font-size: 15px;
   font-weight: 700;
+}
+
+/* 内核更新按钮：放在状态文字左侧 */
+.update-kernel {
+  padding: 2px 10px;
+  margin-right: 8px;
+  font-size: 12px;
+  vertical-align: middle;
+}
+
+/* 内核更新确认弹窗 */
+.update-dialog {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.update-question {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+.update-version {
+  color: var(--accent);
+  font-size: 16px;
+}
+
+.update-warning {
+  padding: 12px 14px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.update-warning strong {
+  color: var(--accent);
+  display: block;
+  margin-bottom: 6px;
+}
+
+.update-warning ul {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.update-warning li {
+  margin: 4px 0;
+}
+
+.update-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
 }
 
 .list {

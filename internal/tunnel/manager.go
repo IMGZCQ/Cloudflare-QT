@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"regexp"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"cfquicktunnel/internal/favicon"
@@ -83,8 +84,9 @@ type Manager struct {
 	bin binary
 	fav *favicon.Cache
 
-	mu   sync.Mutex
-	inst map[string]*instance
+	mu       sync.Mutex
+	inst     map[string]*instance
+	updating int32 // atomic bool，内核更新期间为 1，阻止新的 Start 调用
 }
 
 // NewManager 创建管理器
@@ -122,6 +124,66 @@ func (m *Manager) BinaryStatus() BinaryStatus { return m.bin.Status() }
 
 // DownloadBinary 手动触发下载
 func (m *Manager) DownloadBinary(ctx context.Context) error { return m.bin.Download(ctx) }
+
+// LatestVersion 返回 GitHub 上 cloudflared 的最新版本号
+func (m *Manager) LatestVersion(ctx context.Context) (string, error) { return m.bin.LatestVersion(ctx) }
+
+// UpdateBinary 更新 cloudflared 内核：先把最新版本下载到临时文件（期间隧道保持运行），
+// 下载成功后停止全部隧道、替换可执行文件，最后重启所有更新前正在运行的隧道。
+// 返回是否实际执行了更新（已是最新时 updated=false）。
+// 仅在停止-替换窗口内通过 atomic 标记阻止新的 Start 调用，避免旧进程占用文件导致替换失败。
+func (m *Manager) UpdateBinary(ctx context.Context) (updated bool, err error) {
+	latest, err := m.bin.LatestVersion(ctx)
+	if err != nil {
+		return false, err
+	}
+	current := parseVersionNumber(m.bin.Status().Version)
+	if current != "" && current == latest {
+		return false, nil
+	}
+
+	// 先下载到临时文件：隧道保持运行，下载失败也不影响现有连接；
+	// 期间允许正常启动隧道（运行快照在下载完成后才采集，新启动的隧道也会被重启恢复）
+	if err := m.bin.DownloadToTemp(ctx); err != nil {
+		return false, err
+	}
+
+	// 进入停止-替换窗口，禁止新的 Start
+	if !atomic.CompareAndSwapInt32(&m.updating, 0, 1) {
+		return false, errors.New("内核更新已在进行中")
+	}
+
+	// 记录更新前正在运行的隧道，更新后自动恢复（不限于 autoStart）
+	running := make(map[string]bool)
+	for _, item := range m.List() {
+		if item.State == StateRunning || item.State == StateStarting || item.State == StatePaused {
+			running[item.ID] = true
+		}
+	}
+
+	// 停止全部隧道，释放对 cloudflared 可执行文件的占用（Windows 下无法覆盖正在运行的文件）
+	for _, cfg := range m.st.List() {
+		m.Stop(cfg.ID)
+	}
+
+	// 替换可执行文件后解除启动限制
+	installErr := m.bin.Install()
+	atomic.StoreInt32(&m.updating, 0)
+
+	// 无论替换成功与否都重启更新前正在运行的隧道（替换失败时旧内核仍在原位，可正常拉起）
+	for _, cfg := range m.st.List() {
+		if !running[cfg.ID] {
+			continue
+		}
+		if err := m.Start(ctx, cfg.ID); err != nil {
+			m.getInstance(cfg.ID).appendLog("内核更新后重启失败: " + err.Error())
+		}
+	}
+	if installErr != nil {
+		return false, installErr
+	}
+	return true, nil
+}
 
 // getInstance 获取（或创建）运行态记录
 func (m *Manager) getInstance(id string) *instance {
