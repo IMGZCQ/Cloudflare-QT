@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -42,6 +43,18 @@ const minBinarySize = 5 << 20
 
 // srcTimeout 单个下载源的整体超时
 const srcTimeout = 10 * time.Minute
+
+// 测速参数：正式下载前对各源并发采样，按速度降序重排
+const (
+	// probeSampleSize 每源采样 1MB
+	probeSampleSize = 1 << 20
+	// probeMinSample 采样低于此值判为错误页/异常源
+	probeMinSample = 64 << 10
+	// probeSrcTimeout 单源测速超时
+	probeSrcTimeout = 8 * time.Second
+	// probeTotalTimeout 整体测速超时
+	probeTotalTimeout = 10 * time.Second
+)
 
 // latestVersionURL GitHub releases latest 接口，用于获取最新版本号
 const latestVersionURL = "https://api.github.com/repos/cloudflare/cloudflared/releases/latest"
@@ -254,14 +267,125 @@ func sourceName(prefix string) string {
 	return prefix
 }
 
-// doDownload 按优先级逐个下载源尝试，任一源成功即返回
+// probeSource 对单个源并发采样，返回估算速度（字节/秒）。
+// 带 Range 头试探但不依赖服务器支持：200/206 都照读，读够样本即断连。
+func probeSource(parent context.Context, rawURL string) (int64, error) {
+	ctx, cancel := context.WithTimeout(parent, probeSrcTimeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	if err != nil {
+		return 0, err
+	}
+	req.Header.Set("Range", fmt.Sprintf("bytes=0-%d", probeSampleSize-1))
+	start := time.Now()
+	resp, err := downloadClient.Do(req)
+	if err != nil {
+		return 0, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusPartialContent {
+		return 0, fmt.Errorf("HTTP %s", resp.Status)
+	}
+	// 仅 200 且体积异常才判错误页；206 的 ContentLength 是分片大小，不适用
+	if resp.StatusCode == http.StatusOK && resp.ContentLength > 0 && resp.ContentLength < minBinarySize {
+		return 0, fmt.Errorf("响应体积异常（%d 字节），疑似错误页面", resp.ContentLength)
+	}
+
+	n, err := io.Copy(io.Discard, io.LimitReader(resp.Body, probeSampleSize))
+	// 不 drain，直接取消释放连接
+	cancel()
+	if err != nil && n < probeMinSample {
+		return 0, fmt.Errorf("采样失败（%d 字节）: %w", n, err)
+	}
+	if n < probeMinSample {
+		return 0, fmt.Errorf("样本不足（%d 字节）", n)
+	}
+	elapsed := time.Since(start)
+	if elapsed <= 0 {
+		elapsed = time.Millisecond
+	}
+	return n * int64(time.Second) / int64(elapsed), nil
+}
+
+// rankMirrors 并发测速后按速度降序重排下载源。
+// 只负责排序，不替代 failover：测速失败的源按原优先级垫底，
+// 全部失败或调用方已取消则返回原列表。
+func (b *binary) rankMirrors(parent context.Context, origin string, list []string) []string {
+	if len(list) <= 1 {
+		return list
+	}
+	ctx, cancel := context.WithTimeout(parent, probeTotalTimeout)
+	defer cancel()
+
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	speeds := make(map[int]int64)
+	done := 0
+
+	for i, prefix := range list {
+		wg.Add(1)
+		go func(i int, prefix string) {
+			defer wg.Done()
+			if ctx.Err() != nil {
+				return
+			}
+			speed, err := probeSource(ctx, prefix+origin)
+			mu.Lock()
+			done++
+			if err == nil {
+				speeds[i] = speed
+			}
+			msg := fmt.Sprintf("正在测速（%d/%d）…", done, len(list))
+			mu.Unlock()
+			// b.mu 与 mu 不嵌套持锁
+			b.mu.Lock()
+			b.message = msg
+			b.mu.Unlock()
+		}(i, prefix)
+	}
+	wg.Wait()
+
+	if parent.Err() != nil || len(speeds) == 0 {
+		return list
+	}
+
+	type ranked struct {
+		prefix string
+		speed  int64
+	}
+	ok := make([]ranked, 0, len(speeds))
+	var rest []string
+	for i, prefix := range list {
+		if speed, hit := speeds[i]; hit {
+			ok = append(ok, ranked{prefix, speed})
+		} else {
+			rest = append(rest, prefix)
+		}
+	}
+	// 按速度降序，同速保持原优先级（稳定排序）
+	sort.SliceStable(ok, func(a, b int) bool { return ok[a].speed > ok[b].speed })
+
+	b.mu.Lock()
+	b.message = fmt.Sprintf("测速完成，最快源 %s（%.0f KB/s）",
+		sourceName(ok[0].prefix), float64(ok[0].speed)/1024)
+	b.mu.Unlock()
+
+	rankedList := make([]string, 0, len(list))
+	for _, r := range ok {
+		rankedList = append(rankedList, r.prefix)
+	}
+	return append(rankedList, rest...)
+}
+
+// doDownload 先并发测速重排下载源，再按顺序逐个尝试，任一源成功即返回
 func (b *binary) doDownload(ctx context.Context, asset string) error {
 	if err := config.EnsureDirs(); err != nil {
 		return err
 	}
 
 	origin := fmt.Sprintf(githubURL, asset)
-	list := mirrors()
+	list := b.rankMirrors(ctx, origin, mirrors())
 	var lastErr error
 	for i, prefix := range list {
 		if err := ctx.Err(); err != nil {
